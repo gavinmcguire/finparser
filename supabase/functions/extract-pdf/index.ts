@@ -1,5 +1,6 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import pdfParse from "https://esm.sh/pdf-parse@1.1.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -24,34 +25,20 @@ serve(async (req) => {
     const pdfBase64 = fileData.split(',')[1] || fileData;
     console.log(`PDF Base64 size: ${pdfBase64.length} characters`);
 
-    // Extract text from PDF using a simpler approach
+    // Extract text from PDF using pdf-parse
     let pdfText = "";
     try {
-      // For now, use a basic extraction that works in edge functions
-      // This is a placeholder - in production you'd use a proper PDF parser
-      // or send the base64 directly to Azure if it supports PDF input
-      
-      // Decode and check PDF structure
+      // Convert base64 to buffer
       const binaryString = atob(pdfBase64);
       const bytes = new Uint8Array(binaryString.length);
       for (let i = 0; i < binaryString.length; i++) {
         bytes[i] = binaryString.charCodeAt(i);
       }
+      const fileBuffer = bytes.buffer;
       
-      // Convert bytes to string and extract visible text (basic approach)
-      const decoder = new TextDecoder('utf-8', { fatal: false });
-      const rawText = decoder.decode(bytes);
-      
-      // Extract readable text between parentheses and brackets (common in PDFs)
-      const textMatches = rawText.match(/\(([^)]+)\)/g);
-      if (textMatches) {
-        pdfText = textMatches
-          .map(match => match.slice(1, -1))
-          .filter(text => text.trim().length > 0)
-          .join(' ')
-          .replace(/\\n/g, '\n')
-          .slice(0, 50000); // Limit to first 50k characters
-      }
+      // Parse PDF
+      const pdfData = await pdfParse(fileBuffer);
+      pdfText = pdfData.text;
       
       console.log(`Extracted ${pdfText.length} characters of text from PDF`);
     } catch (error) {
