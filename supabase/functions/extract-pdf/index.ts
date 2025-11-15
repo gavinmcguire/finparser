@@ -37,7 +37,7 @@ serve(async (req) => {
             "api-key": azureApiKey || '',
           },
           body: JSON.stringify({
-            model: "pdf-extractor",
+            model: "gpt-4o-mini",
             messages: [
               { role: "user", content: "Say hello." }
             ],
