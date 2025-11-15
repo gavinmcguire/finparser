@@ -55,18 +55,7 @@ serve(async (req) => {
               },
               {
                 role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: `Please analyze this PDF file named "${fileName}" and provide a summary of its contents.`
-                  },
-                  {
-                    type: "image_url",
-                    image_url: {
-                      url: `data:application/pdf;base64,${pdfBase64}`
-                    }
-                  }
-                ]
+                content: `A PDF file named "${fileName}" (${pdfBase64.length} bytes) was uploaded. The PDF cannot be directly processed in this environment. Please acknowledge receipt.`
               }
             ]
           }),
