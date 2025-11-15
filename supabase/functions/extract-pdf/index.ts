@@ -23,18 +23,17 @@ serve(async (req) => {
     // Get Azure OpenAI configuration from environment variables
     const azureEndpoint = Deno.env.get('AZURE_OPENAI_ENDPOINT');
     const azureApiKey = Deno.env.get('AZURE_OPENAI_API_KEY');
-    const azureDeployment = Deno.env.get('AZURE_OPENAI_DEPLOYMENT') || 'pdf-extractor';
-    const azureApiVersion = Deno.env.get('AZURE_OPENAI_API_VERSION');
+    const azureModel = Deno.env.get('AZURE_OPENAI_MODEL') || 'gpt-4o-mini';
 
     let azureMessage = null;
     let azureError = null;
 
     // Only call Azure if all required credentials are configured
-    if (azureEndpoint && azureApiKey && azureApiVersion) {
+    if (azureEndpoint && azureApiKey) {
       try {
         console.log('Calling Azure OpenAI...');
         
-        const azureUrl = `${azureEndpoint}/openai/deployments/${azureDeployment}/chat/completions?api-version=${azureApiVersion}`;
+        const azureUrl = `${azureEndpoint}/openai/v1/chat/completions`;
         
         const azureResponse = await fetch(azureUrl, {
           method: 'POST',
@@ -43,14 +42,15 @@ serve(async (req) => {
             'api-key': azureApiKey,
           },
           body: JSON.stringify({
+            model: azureModel,
             messages: [
               {
                 role: 'system',
-                content: 'You help with PDF financial extraction for investment banking.'
+                content: 'You help extract financial data from PDFs.'
               },
               {
                 role: 'user',
-                content: `I just uploaded a file called ${fileName}. Reply with a short confirmation that Azure is connected and working.`
+                content: `A PDF was uploaded named ${fileName}. Confirm that Azure is connected.`
               }
             ],
             temperature: 0,
@@ -73,7 +73,7 @@ serve(async (req) => {
       }
     } else {
       console.log('Azure OpenAI not configured - skipping Azure call');
-      azureMessage = 'Azure OpenAI not configured. Please set AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, and AZURE_OPENAI_API_VERSION.';
+      azureMessage = 'Azure OpenAI not configured. Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY.';
     }
 
     // Return the combined response
