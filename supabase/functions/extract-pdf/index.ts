@@ -72,8 +72,14 @@ serve(async (req) => {
           body: JSON.stringify({
             model: "pdf-extractor",
             messages: [
-              { role: "system", content: "You extract tables from financial PDFs." },
-              { role: "user", content: "Extract information from this PDF." }
+              {
+                role: "system",
+                content: "You extract tables and key financial information from PDF documents like 10-Ks and earnings decks."
+              },
+              {
+                role: "user",
+                content: `Here is the beginning of a PDF:\n\n${pdfText.slice(0, 8000)}\n\nBased on this text, briefly summarize what this document is about.`
+              }
             ]
           }),
         }
