@@ -46,11 +46,11 @@ serve(async (req) => {
             messages: [
               {
                 role: 'system',
-                content: 'You help extract financial data from PDFs.'
+                content: 'You extract tables from PDFs.'
               },
               {
                 role: 'user',
-                content: `A PDF was uploaded named ${fileName}. Confirm Azure connection.`
+                content: `A file named ${fileName} was uploaded. Confirm Azure connection.`
               }
             ],
           }),
