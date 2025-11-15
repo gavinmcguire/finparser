@@ -20,75 +20,16 @@ serve(async (req) => {
     console.log(`Processing file: ${fileName}`);
     console.log(`File data size: ${fileData?.length || 0} characters`);
 
-    // Get Azure OpenAI configuration from environment variables
-    const azureEndpoint = Deno.env.get('AZURE_OPENAI_ENDPOINT');
-    const azureApiKey = Deno.env.get('AZURE_OPENAI_API_KEY');
-    const azureModel = Deno.env.get('AZURE_OPENAI_MODEL') || 'gpt-4o-mini';
-
-    let azureMessage = null;
-    let azureError = null;
-
-    // Only call Azure if all required credentials are configured
-    if (azureEndpoint && azureApiKey) {
-      try {
-        console.log('Calling Azure OpenAI...');
-        
-        const azureUrl = `${azureEndpoint}chat/completions`;
-        
-        const azureResponse = await fetch(azureUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'api-key': azureApiKey,
-          },
-          body: JSON.stringify({
-            model: azureModel,
-            messages: [
-              {
-                role: 'system',
-                content: 'You extract tables from PDFs.'
-              },
-              {
-                role: 'user',
-                content: `A file named ${fileName} was uploaded. Confirm Azure connection.`
-              }
-            ],
-          }),
-        });
-
-        if (!azureResponse.ok) {
-          const errorText = await azureResponse.text();
-          console.error('Azure OpenAI error:', azureResponse.status, errorText);
-          azureError = `Azure OpenAI error: ${azureResponse.status} - ${errorText}`;
-        } else {
-          const azureData = await azureResponse.json();
-          azureMessage = azureData.choices?.[0]?.message?.content || 'No response from Azure';
-          console.log('Azure OpenAI response received:', azureMessage);
-        }
-      } catch (error) {
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-        console.error('Error calling Azure OpenAI:', errorMessage);
-        azureError = `Failed to call Azure OpenAI: ${errorMessage}`;
-      }
-    } else {
-      console.log('Azure OpenAI not configured - skipping Azure call');
-      azureMessage = 'Azure OpenAI not configured. Please set AZURE_OPENAI_ENDPOINT and AZURE_OPENAI_API_KEY.';
-    }
-
-    // Return the combined response
+    // Return simple dummy response
     const response = {
       success: true,
       message: "PDF received successfully",
       fileName: fileName,
       timestamp: new Date().toISOString(),
-      dataReceived: !!fileData,
-      fileSize: fileData ? fileData.length : 0,
-      azureMessage: azureMessage,
-      azureError: azureError,
-      note: "This is a dummy response. Table extraction will be implemented next."
+      fileSize: fileData ? fileData.length : 0
     };
 
-    console.log('Sending response with Azure message');
+    console.log('Sending response');
 
     return new Response(
       JSON.stringify(response),
