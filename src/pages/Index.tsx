@@ -129,14 +129,40 @@ const Index = () => {
         </Card>
 
         {response && (
-          <Card className="p-6">
-            <h2 className="text-xl font-semibold mb-4 text-card-foreground">
-              Response
-            </h2>
-            <pre className="bg-muted p-4 rounded-lg overflow-auto text-sm text-muted-foreground">
-              {JSON.stringify(response, null, 2)}
-            </pre>
-          </Card>
+          <div className="space-y-6">
+            {response.azureMessage && (
+              <Card className="p-6 border-primary/20 bg-primary/5">
+                <h2 className="text-xl font-semibold mb-3 text-card-foreground flex items-center gap-2">
+                  <span className="text-primary">✓</span>
+                  Azure OpenAI Response
+                </h2>
+                <p className="text-card-foreground leading-relaxed">
+                  {response.azureMessage}
+                </p>
+              </Card>
+            )}
+
+            {response.azureError && (
+              <Card className="p-6 border-destructive/20 bg-destructive/5">
+                <h2 className="text-xl font-semibold mb-3 text-destructive flex items-center gap-2">
+                  <span>⚠</span>
+                  Azure OpenAI Error
+                </h2>
+                <p className="text-destructive-foreground">
+                  {response.azureError}
+                </p>
+              </Card>
+            )}
+
+            <Card className="p-6">
+              <h2 className="text-xl font-semibold mb-4 text-card-foreground">
+                Full Response
+              </h2>
+              <pre className="bg-muted p-4 rounded-lg overflow-auto text-sm text-muted-foreground">
+                {JSON.stringify(response, null, 2)}
+              </pre>
+            </Card>
+          </div>
         )}
       </div>
     </div>
