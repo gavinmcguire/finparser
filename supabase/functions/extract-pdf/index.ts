@@ -106,7 +106,8 @@ serve(async (req) => {
       fileName: fileName,
       timestamp: new Date().toISOString(),
       fileSize: fileData ? fileData.length : 0,
-      azureMessage: azureMessage
+      azureMessage: azureMessage,
+      pdfTextPreview: pdfText?.slice(0, 500) || null
     };
 
     console.log('Sending response');
