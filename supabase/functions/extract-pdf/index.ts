@@ -28,106 +28,106 @@ serve(async (req) => {
       bytes[i] = binaryString.charCodeAt(i);
     }
 
-    // Call Lovable AI with document as file attachment
-    let pdfText = "";
+    // Write PDF to temp file
+    const tempPath = `/tmp/${fileName}`;
+    await Deno.writeFile(tempPath, bytes);
+    
+    console.log('PDF saved to temp, parsing...');
+
+    // Parse PDF using external service (pdf.co or similar)
+    // For now, extract basic text structure
+    const decoder = new TextDecoder('utf-8', { fatal: false });
+    const rawText = decoder.decode(bytes);
+    
+    // Extract text from PDF structure
+    const textMatches = rawText.match(/\(([^)]+)\)/g);
+    let extractedText = "";
+    
+    if (textMatches) {
+      extractedText = textMatches
+        .map(match => match.slice(1, -1))
+        .filter(text => text.trim().length > 2)
+        .join(' ')
+        .replace(/\\n/g, '\n')
+        .replace(/\\\(/g, '(')
+        .replace(/\\\)/g, ')')
+        .slice(0, 30000);
+    }
+    
+    console.log(`Extracted ${extractedText.length} characters`);
+
+    // Call Lovable AI with the extracted text
+    let pdfText = extractedText;
     let tables = [];
     let pdfError = null;
     let azureMessage = null;
     
+    if (pdfText.length < 100) {
+      pdfError = "Insufficient text extracted from PDF";
+      azureMessage = "Unable to extract sufficient content from PDF";
+    } else {
+      try {
+        const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+        
+        console.log('Calling Lovable AI for analysis...');
+
+        const aiResponse = await fetch(
+          'https://ai.gateway.lovable.dev/v1/chat/completions',
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "Authorization": `Bearer ${lovableApiKey}`,
+            },
+            body: JSON.stringify({
+              model: "google/gemini-2.5-flash",
+              messages: [
+                {
+                  role: "system",
+                  content: "You analyze financial documents. Extract key information and identify any tables. Respond in JSON format with: {\"summary\": \"brief summary\", \"tables\": [{\"title\": \"table name\", \"columns\": [\"col names\"], \"rows\": [[\"data\"]]}]}"
+                },
+                {
+                  role: "user",
+                  content: `Analyze this text from "${fileName}":\n\n${pdfText.slice(0, 15000)}\n\nProvide a summary and extract any tables found. Return as JSON.`
+                }
+              ],
+              response_format: { type: "json_object" }
+            }),
+          }
+        );
+
+        if (!aiResponse.ok) {
+          const errorText = await aiResponse.text();
+          throw new Error(`AI error: ${aiResponse.status} - ${errorText}`);
+        }
+
+        const data = await aiResponse.json();
+        const responseContent = data.choices?.[0]?.message?.content;
+        
+        if (responseContent) {
+          try {
+            const parsed = JSON.parse(responseContent);
+            tables = parsed.tables || [];
+            azureMessage = parsed.summary || "Document analyzed";
+          } catch (e) {
+            azureMessage = responseContent;
+          }
+        }
+        
+        console.log(`Analysis complete: ${tables.length} tables found`);
+
+      } catch (error) {
+        pdfError = error instanceof Error ? error.message : 'Unknown error';
+        azureMessage = `Error: ${pdfError}`;
+        console.error('AI error:', pdfError);
+      }
+    }
+
+    // Clean up temp file
     try {
-      const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
-      
-      console.log('Calling Lovable AI with PDF document...');
-      
-      // Create form data with the PDF file
-      const formData = new FormData();
-      const blob = new Blob([bytes], { type: 'application/pdf' });
-      formData.append('file', blob, fileName);
-      formData.append('model', 'google/gemini-2.5-flash');
-      formData.append('purpose', 'document-analysis');
-      
-      // First, upload the file
-      const uploadResponse = await fetch(
-        'https://ai.gateway.lovable.dev/v1/files',
-        {
-          method: "POST",
-          headers: {
-            "Authorization": `Bearer ${lovableApiKey}`,
-          },
-          body: formData,
-        }
-      );
-
-      if (!uploadResponse.ok) {
-        throw new Error(`File upload failed: ${uploadResponse.status}`);
-      }
-
-      const uploadData = await uploadResponse.json();
-      const fileId = uploadData.id;
-      
-      console.log('File uploaded, analyzing...');
-
-      // Now analyze the uploaded document
-      const aiResponse = await fetch(
-        'https://ai.gateway.lovable.dev/v1/chat/completions',
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${lovableApiKey}`,
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              {
-                role: "system",
-                content: "You are a financial document analyzer. Extract text and tables from PDFs. Return your response as JSON with this structure: {\"summary\": \"brief summary\", \"text\": \"full extracted text\", \"tables\": [{\"title\": \"table name\", \"columns\": [\"col1\", \"col2\"], \"rows\": [[\"val1\", \"val2\"]]}]}"
-              },
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: `Analyze this PDF document "${fileName}" and extract all text and tables. Return the response as JSON.`
-                  },
-                  {
-                    type: "file",
-                    file_id: fileId
-                  }
-                ]
-              }
-            ],
-            response_format: { type: "json_object" }
-          }),
-        }
-      );
-
-      if (!aiResponse.ok) {
-        const errorData = await aiResponse.text();
-        throw new Error(`AI analysis failed: ${errorData}`);
-      }
-
-      const data = await aiResponse.json();
-      const responseContent = data.choices?.[0]?.message?.content;
-      
-      if (responseContent) {
-        try {
-          const parsed = JSON.parse(responseContent);
-          pdfText = parsed.text || "";
-          tables = parsed.tables || [];
-          azureMessage = parsed.summary || "Document analyzed successfully";
-        } catch (e) {
-          pdfText = responseContent;
-          azureMessage = responseContent;
-        }
-      }
-      
-      console.log(`Extracted ${pdfText.length} characters, ${tables.length} tables`);
-
-    } catch (error) {
-      pdfError = error instanceof Error ? error.message : 'Unknown error';
-      azureMessage = `Error: ${pdfError}`;
-      console.error('Processing error:', pdfError);
+      await Deno.remove(tempPath);
+    } catch (e) {
+      console.log('Temp file cleanup failed (non-critical)');
     }
 
     return new Response(
