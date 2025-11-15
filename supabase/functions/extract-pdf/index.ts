@@ -28,9 +28,6 @@ serve(async (req) => {
       
       console.log('Calling Azure OpenAI...');
       
-      // Extract base64 content from data URL
-      const base64Content = fileData.split(',')[1] || fileData;
-      
       const azureResponse = await fetch(
         `${azureEndpoint}/chat/completions`,
         {
@@ -44,12 +41,6 @@ serve(async (req) => {
             messages: [
               { role: "system", content: "You extract tables from financial PDFs." },
               { role: "user", content: "Extract information from this PDF." }
-            ],
-            files: [
-              {
-                name: fileName,
-                content: base64Content
-              }
             ]
           }),
         }
