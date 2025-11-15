@@ -20,13 +20,53 @@ serve(async (req) => {
     console.log(`Processing file: ${fileName}`);
     console.log(`File data size: ${fileData?.length || 0} characters`);
 
-    // Return simple dummy response
+    // Call Azure OpenAI
+    let azureMessage = null;
+    try {
+      const azureEndpoint = Deno.env.get('AZURE_OPENAI_ENDPOINT');
+      const azureApiKey = Deno.env.get('AZURE_OPENAI_API_KEY');
+      
+      console.log('Calling Azure OpenAI...');
+      
+      const azureResponse = await fetch(
+        `${azureEndpoint}/openai/v1/chat/completions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "api-key": azureApiKey || '',
+          },
+          body: JSON.stringify({
+            model: "pdf-extractor",
+            messages: [
+              { role: "user", content: "Say hello." }
+            ],
+          }),
+        }
+      );
+
+      if (!azureResponse.ok) {
+        const errorData = await azureResponse.text();
+        azureMessage = `Azure OpenAI error: ${azureResponse.status} - ${errorData}`;
+        console.error('Azure error:', azureMessage);
+      } else {
+        const data = await azureResponse.json();
+        azureMessage = data.choices?.[0]?.message?.content ?? null;
+        console.log('Azure response:', azureMessage);
+      }
+    } catch (error) {
+      azureMessage = `Azure OpenAI error: ${error instanceof Error ? error.message : 'Unknown error'}`;
+      console.error('Azure exception:', azureMessage);
+    }
+
+    // Return simple dummy response with Azure message
     const response = {
       success: true,
       message: "PDF received successfully",
       fileName: fileName,
       timestamp: new Date().toISOString(),
-      fileSize: fileData ? fileData.length : 0
+      fileSize: fileData ? fileData.length : 0,
+      azureMessage: azureMessage
     };
 
     console.log('Sending response');
