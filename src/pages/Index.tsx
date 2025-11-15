@@ -5,6 +5,10 @@ import { Card } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import * as pdfjsLib from 'pdfjs-dist';
+
+// Configure PDF.js worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
 
 const Index = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
@@ -36,56 +40,43 @@ const Index = () => {
     setResponse(null);
 
     try {
-      // Convert file to base64
-      const reader = new FileReader();
-      reader.readAsDataURL(selectedFile);
+      // Extract text from PDF using PDF.js
+      const arrayBuffer = await selectedFile.arrayBuffer();
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       
-      reader.onload = async () => {
-        try {
-          const base64Data = reader.result as string;
-          
-          // Call the edge function
-          const { data, error } = await supabase.functions.invoke("extract-pdf", {
-            body: {
-              fileName: selectedFile.name,
-              fileData: base64Data,
-            },
-          });
+      let extractedText = "";
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i);
+        const textContent = await page.getTextContent();
+        const pageText = textContent.items.map((item: any) => item.str).join(' ');
+        extractedText += pageText + '\n';
+      }
+      
+      console.log(`Extracted ${extractedText.length} characters from PDF`);
+      
+      // Call the edge function with extracted text
+      const { data, error } = await supabase.functions.invoke("extract-pdf", {
+        body: {
+          fileName: selectedFile.name,
+          pdfText: extractedText,
+        },
+      });
 
-          if (error) throw error;
+      if (error) throw error;
 
-          setResponse(data);
-          toast({
-            title: "Success",
-            description: "PDF processed successfully",
-          });
-        } catch (error) {
-          console.error("Error calling function:", error);
-          toast({
-            title: "Error",
-            description: "Failed to process PDF",
-            variant: "destructive",
-          });
-        } finally {
-          setIsProcessing(false);
-        }
-      };
-
-      reader.onerror = () => {
-        toast({
-          title: "Error",
-          description: "Failed to read file",
-          variant: "destructive",
-        });
-        setIsProcessing(false);
-      };
+      setResponse(data);
+      toast({
+        title: "Success",
+        description: "PDF processed successfully",
+      });
     } catch (error) {
       console.error("Error:", error);
       toast({
         title: "Error",
-        description: "An unexpected error occurred",
+        description: "Failed to process PDF",
         variant: "destructive",
       });
+    } finally {
       setIsProcessing(false);
     }
   };

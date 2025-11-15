@@ -15,22 +15,18 @@ serve(async (req) => {
   try {
     console.log('PDF extraction request received');
     
-    const { fileName, fileData } = await req.json();
+    const { fileName, pdfText } = await req.json();
     
     console.log(`Processing file: ${fileName}`);
-    console.log(`File data size: ${fileData?.length || 0} characters`);
+    console.log(`PDF text length: ${pdfText?.length || 0} characters`);
 
-    // Convert PDF to Base64
-    const pdfBase64 = fileData.split(',')[1] || fileData;
-    console.log(`PDF Base64 size: ${pdfBase64.length} characters`);
-
-    // Call Lovable AI with PDF support
+    // Call Lovable AI with extracted text
     let azureMessage = null;
     let pdfError = null;
     try {
       const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
       
-      console.log('Calling Lovable AI for PDF extraction...');
+      console.log('Calling Lovable AI for PDF analysis...');
       
       const aiResponse = await fetch(
         'https://ai.gateway.lovable.dev/v1/chat/completions',
@@ -49,18 +45,7 @@ serve(async (req) => {
               },
               {
                 role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text: `Please analyze this PDF file named "${fileName}" and provide a summary of its contents, including any key financial data or tables you find.`
-                  },
-                  {
-                    type: "image_url",
-                    image_url: {
-                      url: `data:application/pdf;base64,${pdfBase64}`
-                    }
-                  }
-                ]
+                content: `Please analyze this text extracted from "${fileName}" and provide a summary of its contents, including any key financial data or tables:\n\n${pdfText.slice(0, 20000)}`
               }
             ]
           }),
@@ -75,7 +60,7 @@ serve(async (req) => {
       } else {
         const data = await aiResponse.json();
         azureMessage = data.choices?.[0]?.message?.content ?? null;
-        console.log('AI response received:', azureMessage?.slice(0, 200) + '...');
+        console.log('AI response received');
       }
     } catch (error) {
       azureMessage = `AI error: ${error instanceof Error ? error.message : 'Unknown error'}`;
@@ -83,15 +68,13 @@ serve(async (req) => {
       console.error('AI exception:', azureMessage);
     }
 
-    const pdfText = "[PDF processed by Lovable AI]";
-
-    // Return simple dummy response with Azure message
+    // Return response
     const response = {
       success: true,
       message: "PDF received successfully",
       fileName: fileName,
       timestamp: new Date().toISOString(),
-      fileSize: fileData ? fileData.length : 0,
+      textLength: pdfText?.length || 0,
       azureMessage: azureMessage,
       pdfTextPreview: pdfText?.slice(0, 500) || null,
       pdfError: pdfError
