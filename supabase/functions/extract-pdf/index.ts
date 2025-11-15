@@ -27,6 +27,7 @@ serve(async (req) => {
 
     // Extract text from PDF using pdf-parse
     let pdfText = "";
+    let pdfError = null;
     try {
       // Convert base64 to buffer
       const binaryString = atob(pdfBase64);
@@ -42,8 +43,9 @@ serve(async (req) => {
       
       console.log(`Extracted ${pdfText.length} characters of text from PDF`);
     } catch (error) {
-      console.error('Error extracting PDF text:', error);
-      pdfText = "Error extracting text from PDF";
+      pdfError = error instanceof Error ? error.message : 'PDF parse failed';
+      console.error('Error extracting PDF text:', pdfError);
+      pdfText = "";
     }
 
     // Call Azure OpenAI
@@ -100,7 +102,8 @@ serve(async (req) => {
       timestamp: new Date().toISOString(),
       fileSize: fileData ? fileData.length : 0,
       azureMessage: azureMessage,
-      pdfTextPreview: pdfText?.slice(0, 500) || null
+      pdfTextPreview: pdfText?.slice(0, 500) || null,
+      pdfError: pdfError
     };
 
     console.log('Sending response');
