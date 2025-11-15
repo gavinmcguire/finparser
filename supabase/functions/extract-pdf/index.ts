@@ -29,7 +29,7 @@ serve(async (req) => {
       console.log('Calling Azure OpenAI...');
       
       const azureResponse = await fetch(
-        `${azureEndpoint}/openai/v1/chat/completions`,
+        `${azureEndpoint}/chat/completions`,
         {
           method: "POST",
           headers: {
@@ -37,7 +37,7 @@ serve(async (req) => {
             "api-key": azureApiKey || '',
           },
           body: JSON.stringify({
-            model: "gpt-4o-mini",
+            model: "pdf-extractor",
             messages: [
               { role: "user", content: "Say hello." }
             ],
