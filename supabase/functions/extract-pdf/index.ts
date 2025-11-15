@@ -33,7 +33,7 @@ serve(async (req) => {
       try {
         console.log('Calling Azure OpenAI...');
         
-        const azureUrl = `${azureEndpoint}/openai/v1/chat/completions`;
+        const azureUrl = `${azureEndpoint}chat/completions`;
         
         const azureResponse = await fetch(azureUrl, {
           method: 'POST',
