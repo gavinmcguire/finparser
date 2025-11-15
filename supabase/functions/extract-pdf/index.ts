@@ -20,6 +20,10 @@ serve(async (req) => {
     console.log(`Processing file: ${fileName}`);
     console.log(`File data size: ${fileData?.length || 0} characters`);
 
+    // Convert PDF to Base64
+    const pdfBase64 = fileData.split(',')[1] || fileData;
+    console.log(`PDF Base64 size: ${pdfBase64.length} characters`);
+
     // Call Azure OpenAI
     let azureMessage = null;
     try {
