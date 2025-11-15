@@ -50,10 +50,9 @@ serve(async (req) => {
               },
               {
                 role: 'user',
-                content: `A PDF was uploaded named ${fileName}. Confirm that Azure is connected.`
+                content: `A PDF was uploaded named ${fileName}. Confirm Azure connection.`
               }
             ],
-            temperature: 0,
           }),
         });
 
