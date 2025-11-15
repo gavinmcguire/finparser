@@ -1,6 +1,5 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
-import pdfParse from "https://esm.sh/pdf-parse@1.1.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -25,28 +24,11 @@ serve(async (req) => {
     const pdfBase64 = fileData.split(',')[1] || fileData;
     console.log(`PDF Base64 size: ${pdfBase64.length} characters`);
 
-    // Extract text from PDF using pdf-parse
-    let pdfText = "";
-    let pdfError = null;
-    try {
-      // Convert base64 to buffer
-      const binaryString = atob(pdfBase64);
-      const bytes = new Uint8Array(binaryString.length);
-      for (let i = 0; i < binaryString.length; i++) {
-        bytes[i] = binaryString.charCodeAt(i);
-      }
-      const fileBuffer = bytes.buffer;
-      
-      // Parse PDF
-      const pdfData = await pdfParse(fileBuffer);
-      pdfText = pdfData.text;
-      
-      console.log(`Extracted ${pdfText.length} characters of text from PDF`);
-    } catch (error) {
-      pdfError = error instanceof Error ? error.message : 'PDF parse failed';
-      console.error('Error extracting PDF text:', pdfError);
-      pdfText = "";
-    }
+    // Since PDF parsing libraries don't work in edge functions,
+    // we'll send the PDF data directly to Azure OpenAI
+    // Azure's pdf-extractor model should handle the PDF processing
+    const pdfText = `[PDF Base64 Data - ${pdfBase64.length} bytes]`;
+    const pdfError = null;
 
     // Call Azure OpenAI
     let azureMessage = null;
@@ -73,7 +55,18 @@ serve(async (req) => {
               },
               {
                 role: "user",
-                content: `Here is the beginning of a PDF:\n\n${pdfText.slice(0, 8000)}\n\nBased on this text, briefly summarize what this document is about.`
+                content: [
+                  {
+                    type: "text",
+                    text: `Please analyze this PDF file named "${fileName}" and provide a summary of its contents.`
+                  },
+                  {
+                    type: "image_url",
+                    image_url: {
+                      url: `data:application/pdf;base64,${pdfBase64}`
+                    }
+                  }
+                ]
               }
             ]
           }),
