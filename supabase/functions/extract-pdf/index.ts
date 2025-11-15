@@ -39,7 +39,7 @@ serve(async (req) => {
           body: JSON.stringify({
             model: "pdf-extractor",
             messages: [
-              { role: "user", content: "Say hello." }
+              { role: "user", content: `A PDF named ${fileName} was uploaded. Confirm you see the filename.` }
             ],
           }),
         }
