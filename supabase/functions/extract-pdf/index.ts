@@ -18,129 +18,165 @@ serve(async (req) => {
     
     console.log(`Processing file: ${fileName}`);
 
+    // Get Azure Document Intelligence credentials
+    const docIntelEndpoint = Deno.env.get('AZURE_DOC_INTELLIGENCE_ENDPOINT');
+    const docIntelKey = Deno.env.get('AZURE_DOC_INTELLIGENCE_KEY');
+    
+    if (!docIntelEndpoint || !docIntelKey) {
+      throw new Error('Azure Document Intelligence credentials not configured');
+    }
+
     // Extract base64 content
     const pdfBase64 = fileData.split(',')[1] || fileData;
     
-    // Decode to binary
-    const binaryString = atob(pdfBase64);
-    const bytes = new Uint8Array(binaryString.length);
-    for (let i = 0; i < binaryString.length; i++) {
-      bytes[i] = binaryString.charCodeAt(i);
+    console.log('Sending PDF to Azure Document Intelligence...');
+
+    // Call Azure Document Intelligence API - Layout model for text + tables
+    const analyzeUrl = `${docIntelEndpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
+    
+    const analyzeResponse = await fetch(analyzeUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Ocp-Apim-Subscription-Key': docIntelKey,
+      },
+      body: JSON.stringify({
+        base64Source: pdfBase64
+      })
+    });
+
+    if (!analyzeResponse.ok) {
+      const errorText = await analyzeResponse.text();
+      throw new Error(`Azure Document Intelligence error: ${analyzeResponse.status} - ${errorText}`);
     }
 
-    // Write PDF to temp file
-    const tempPath = `/tmp/${fileName}`;
-    await Deno.writeFile(tempPath, bytes);
-    
-    console.log('PDF saved to temp, parsing...');
-
-    // Parse PDF using external service (pdf.co or similar)
-    // For now, extract basic text structure
-    const decoder = new TextDecoder('utf-8', { fatal: false });
-    const rawText = decoder.decode(bytes);
-    
-    // Extract text from PDF structure
-    const textMatches = rawText.match(/\(([^)]+)\)/g);
-    let extractedText = "";
-    
-    if (textMatches) {
-      extractedText = textMatches
-        .map(match => match.slice(1, -1))
-        .filter(text => text.trim().length > 2)
-        .join(' ')
-        .replace(/\\n/g, '\n')
-        .replace(/\\\(/g, '(')
-        .replace(/\\\)/g, ')')
-        .slice(0, 30000);
+    // Get the operation location to poll for results
+    const operationLocation = analyzeResponse.headers.get('Operation-Location');
+    if (!operationLocation) {
+      throw new Error('No operation location returned from Azure');
     }
-    
-    console.log(`Extracted ${extractedText.length} characters`);
 
-    // Call Lovable AI with the extracted text
-    let pdfText = extractedText;
-    let tables = [];
-    let pdfError = null;
-    let azureMessage = null;
-    
-    if (pdfText.length < 100) {
-      pdfError = "Insufficient text extracted from PDF";
-      azureMessage = "Unable to extract sufficient content from PDF";
-    } else {
-      try {
-        const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
-        
-        console.log('Calling Lovable AI for analysis...');
+    console.log('Analysis started, polling for results...');
 
-        const aiResponse = await fetch(
-          'https://ai.gateway.lovable.dev/v1/chat/completions',
-          {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              "Authorization": `Bearer ${lovableApiKey}`,
-            },
-            body: JSON.stringify({
-              model: "google/gemini-2.5-flash",
-              messages: [
-                {
-                  role: "system",
-                  content: "You analyze financial documents. Extract key information and identify any tables. Respond in JSON format with: {\"summary\": \"brief summary\", \"tables\": [{\"title\": \"table name\", \"columns\": [\"col names\"], \"rows\": [[\"data\"]]}]}"
-                },
-                {
-                  role: "user",
-                  content: `Analyze this text from "${fileName}":\n\n${pdfText.slice(0, 15000)}\n\nProvide a summary and extract any tables found. Return as JSON.`
-                }
-              ],
-              response_format: { type: "json_object" }
-            }),
-          }
-        );
+    // Poll for results (Azure processes async)
+    let result = null;
+    let attempts = 0;
+    const maxAttempts = 30; // 30 seconds max
 
-        if (!aiResponse.ok) {
-          const errorText = await aiResponse.text();
-          throw new Error(`AI error: ${aiResponse.status} - ${errorText}`);
+    while (attempts < maxAttempts) {
+      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
+      
+      const resultResponse = await fetch(operationLocation, {
+        headers: {
+          'Ocp-Apim-Subscription-Key': docIntelKey,
         }
+      });
 
-        const data = await aiResponse.json();
-        const responseContent = data.choices?.[0]?.message?.content;
-        
-        if (responseContent) {
-          try {
-            const parsed = JSON.parse(responseContent);
-            tables = parsed.tables || [];
-            azureMessage = parsed.summary || "Document analyzed";
-          } catch (e) {
-            azureMessage = responseContent;
-          }
-        }
-        
-        console.log(`Analysis complete: ${tables.length} tables found`);
-
-      } catch (error) {
-        pdfError = error instanceof Error ? error.message : 'Unknown error';
-        azureMessage = `Error: ${pdfError}`;
-        console.error('AI error:', pdfError);
+      if (!resultResponse.ok) {
+        throw new Error(`Failed to get results: ${resultResponse.status}`);
       }
+
+      const resultData = await resultResponse.json();
+      
+      if (resultData.status === 'succeeded') {
+        result = resultData.analyzeResult;
+        console.log('Analysis complete!');
+        break;
+      } else if (resultData.status === 'failed') {
+        throw new Error('Azure analysis failed');
+      }
+      
+      attempts++;
     }
 
-    // Clean up temp file
+    if (!result) {
+      throw new Error('Analysis timed out');
+    }
+
+    // Extract text
+    const pdfText = result.content || "";
+    
+    // Extract tables
+    const tables = (result.tables || []).map((table: any, index: number) => {
+      const columns: string[] = [];
+      const rows: string[][] = [];
+      
+      // Get column headers from first row
+      const headerCells = table.cells.filter((cell: any) => cell.rowIndex === 0);
+      headerCells.forEach((cell: any) => {
+        columns[cell.columnIndex] = cell.content;
+      });
+      
+      // Get data rows
+      const maxRow = Math.max(...table.cells.map((c: any) => c.rowIndex));
+      for (let rowIdx = 1; rowIdx <= maxRow; rowIdx++) {
+        const rowCells = table.cells.filter((cell: any) => cell.rowIndex === rowIdx);
+        const rowData: string[] = [];
+        rowCells.forEach((cell: any) => {
+          rowData[cell.columnIndex] = cell.content;
+        });
+        rows.push(rowData);
+      }
+      
+      return {
+        title: `Table ${index + 1}`,
+        columns: columns,
+        rows: rows,
+        rowCount: table.rowCount,
+        columnCount: table.columnCount
+      };
+    });
+
+    console.log(`Extracted ${pdfText.length} chars, ${tables.length} tables`);
+
+    // Call Lovable AI for summary
+    let summary = null;
     try {
-      await Deno.remove(tempPath);
+      const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+      
+      const aiResponse = await fetch(
+        'https://ai.gateway.lovable.dev/v1/chat/completions',
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${lovableApiKey}`,
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              {
+                role: "system",
+                content: "You summarize financial documents. Provide a brief, clear summary highlighting key financial information."
+              },
+              {
+                role: "user",
+                content: `Summarize this financial document in 2-3 sentences:\n\n${pdfText.slice(0, 8000)}`
+              }
+            ]
+          }),
+        }
+      );
+
+      if (aiResponse.ok) {
+        const data = await aiResponse.json();
+        summary = data.choices?.[0]?.message?.content || null;
+      }
     } catch (e) {
-      console.log('Temp file cleanup failed (non-critical)');
+      console.log('AI summary failed (non-critical):', e);
     }
 
     return new Response(
       JSON.stringify({
-        success: pdfError === null,
-        message: "PDF processed",
+        success: true,
+        message: "PDF processed successfully",
         fileName: fileName,
         timestamp: new Date().toISOString(),
         pdfText: pdfText,
         pdfTextPreview: pdfText.slice(0, 500) || null,
         tables: tables,
-        azureMessage: azureMessage,
-        pdfError: pdfError
+        azureMessage: summary || `Extracted ${tables.length} tables from document`,
+        pdfError: null
       }),
       { 
         headers: { 
@@ -157,7 +193,8 @@ serve(async (req) => {
       JSON.stringify({ 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString()
+        timestamp: new Date().toISOString(),
+        pdfError: error instanceof Error ? error.message : 'Unknown error'
       }),
       { 
         status: 500,
