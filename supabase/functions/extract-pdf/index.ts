@@ -153,8 +153,11 @@ serve(async (req) => {
         let classAShares = 0;
         let classBMarketValue = 0;
         let classBShares = 0;
+        let marketValueTotal = 0;
         
-        firstTable.rows.forEach((row: string[]) => {
+        let foundClassBMarketValue = false;
+        
+        firstTable.rows.forEach((row: string[], idx: number) => {
           const rowText = row.join(' ').toLowerCase();
           
           // Check for issuer status
@@ -166,36 +169,39 @@ serve(async (req) => {
             isLargeAcceleratedFiler = parseBoolean(row.join(' '));
           }
           
-          // Check for Class A data
-          if (rowText.includes('class a') && !rowText.includes('class b')) {
-            row.forEach(cell => {
-              if (cell.includes('$') && cell.includes(',')) {
-                const num = parseNumber(cell);
-                if (num > 1000000) { // Market value
-                  classAMarketValue = num;
-                } else if (num > 0) { // Shares
-                  classAShares = num;
-                }
-              }
-            });
+          // Parse Class A market value: row[0] === 'Class A' and row[2] is dollar amount
+          if (row[0]?.trim() === 'Class A' && row[2]?.includes('$') && classAMarketValue === 0) {
+            classAMarketValue = parseNumber(row[2]);
           }
           
-          // Check for Class B data
-          if (rowText.includes('class b')) {
-            row.forEach(cell => {
-              if (cell.includes('$') && cell.includes(',')) {
-                const num = parseNumber(cell);
-                if (num > 1000000000) { // Market value (larger)
-                  classBMarketValue = num;
-                } else if (num > 1000000) { // Shares
-                  classBShares = num;
-                }
-              }
-            });
+          // Parse Class B market value: row[0] === 'Class B' and row[2] is dollar amount
+          if (row[0]?.trim() === 'Class B' && row[2]?.includes('$') && classBMarketValue === 0) {
+            classBMarketValue = parseNumber(row[2]);
+            foundClassBMarketValue = true;
+          }
+          
+          // Parse total market value: row[0] === '' and row[2] is dollar amount after Class B
+          if (foundClassBMarketValue && row[0]?.trim() === '' && row[2]?.includes('$') && marketValueTotal === 0) {
+            marketValueTotal = parseNumber(row[2]);
+          }
+          
+          // Parse Class A shares: later row where row[0] === 'Class A' and row[2] has no $
+          if (row[0]?.trim() === 'Class A' && row[2] && !row[2].includes('$') && classAShares === 0) {
+            const num = parseNumber(row[2]);
+            if (num > 100000) { // Reasonable share count threshold
+              classAShares = num;
+            }
+          }
+          
+          // Parse Class B shares: later row where row[0] === 'Class B' and row[2] has no $
+          if (row[0]?.trim() === 'Class B' && row[2] && !row[2].includes('$') && classBShares === 0) {
+            const num = parseNumber(row[2]);
+            if (num > 100000) { // Reasonable share count threshold
+              classBShares = num;
+            }
           }
         });
         
-        const marketValueTotal = classAMarketValue + classBMarketValue;
         const sharesTotal = classAShares + classBShares;
         
         equitySummary = {
