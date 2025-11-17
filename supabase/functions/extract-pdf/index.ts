@@ -126,13 +126,15 @@ serve(async (req) => {
     // Extract text
     const pdfText = result.content || "";
     
-    console.log(`Azure returned ${result.tables?.length || 0} tables for processing`);
+    // Count raw tables from Azure response
+    const azureTablesCount = result.tables?.length || 0;
+    console.log(`Azure returned ${azureTablesCount} tables for processing`);
     console.log('Starting table extraction from result.tables array...');
     
     // Extract ALL tables from Azure result (tables are at top level, not nested under pages)
     // The Azure Document Intelligence API returns all tables in result.tables regardless of page
     const tables = (result.tables || []).map((table: any, index: number) => {
-      console.log(`Processing table ${index + 1}/${result.tables.length}...`);
+      console.log(`Processing table ${index + 1}/${azureTablesCount}...`);
       const columns: string[] = [];
       const rows: string[][] = [];
       
@@ -485,6 +487,7 @@ serve(async (req) => {
         pdfTextPreview: pdfText.slice(0, 500) || null,
         tables: tables,
         tablesCount: tables.length,
+        azureTablesCount: azureTablesCount,
         equitySummary: equitySummary,
         financials: financials,
         azureMessage: summary || `Extracted ${tables.length} tables from document`,
