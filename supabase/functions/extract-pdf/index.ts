@@ -129,95 +129,133 @@ serve(async (req) => {
 
     console.log(`Extracted ${pdfText.length} chars, ${tables.length} tables`);
 
-    // Parse equity summary from first table
+    // Helper to parse numeric value from string like "$5,603,520,725"
+    const parseNumberCell = (raw?: string): number | undefined => {
+      if (!raw) return undefined;
+      const cleaned = raw
+        .toString()
+        .replace(/\$/g, "")
+        .replace(/,/g, "")
+        .trim();
+      if (!cleaned) return undefined;
+      const n = Number(cleaned);
+      return Number.isFinite(n) ? n : undefined;
+    };
+
+    // Semantic equity parser that works generically across 10-K PDFs
+    const extractEquitySummary = (tables: any[], flags?: { isWellKnownSeasonedIssuer?: boolean; isLargeAcceleratedFiler?: boolean }) => {
+      const summary: any = {
+        isWellKnownSeasonedIssuer: flags?.isWellKnownSeasonedIssuer,
+        isLargeAcceleratedFiler: flags?.isLargeAcceleratedFiler,
+        classA: {},
+        classB: {},
+      };
+
+      for (const table of tables) {
+        let section: "none" | "marketValue" | "sharesOutstanding" = "none";
+
+        for (const row of table.rows) {
+          const c0 = (row[0] || "").toLowerCase();
+          const c1 = row[1];
+          const c2 = row[2];
+
+          // Detect section headers using generic 10-K wording
+          if (c0.includes("aggregate market value")) {
+            section = "marketValue";
+            continue;
+          }
+          if (
+            c0.includes("number of") &&
+            c0.includes("shares") &&
+            c0.includes("outstanding")
+          ) {
+            section = "sharesOutstanding";
+            continue;
+          }
+
+          // MARKET VALUE SECTION
+          if (section === "marketValue") {
+            if (c0.startsWith("class a")) {
+              summary.classA.marketValue = parseNumberCell(c2 ?? c1);
+            } else if (c0.startsWith("class b")) {
+              summary.classB.marketValue = parseNumberCell(c2 ?? c1);
+            } else if (!c0 && (c2 || c1)) {
+              // blank label but numeric value → total market value
+              const total = parseNumberCell(c2 ?? c1);
+              if (total !== undefined) {
+                summary.marketValueNonAffiliatesTotal = total;
+              }
+            }
+          }
+
+          // SHARES OUTSTANDING SECTION
+          if (section === "sharesOutstanding") {
+            if (c0.startsWith("class a")) {
+              summary.classA.sharesOutstanding = parseNumberCell(c2 ?? c1);
+            } else if (c0.startsWith("class b")) {
+              summary.classB.sharesOutstanding = parseNumberCell(c2 ?? c1);
+            } else if (!c0 && (c2 || c1)) {
+              // blank label but numeric value → total shares
+              const total = parseNumberCell(c2 ?? c1);
+              if (total !== undefined) {
+                summary.sharesOutstandingTotal = total;
+              }
+            }
+          }
+        }
+      }
+
+      // Compute totals from components if missing
+      if (
+        summary.sharesOutstandingTotal === undefined &&
+        summary.classA.sharesOutstanding !== undefined &&
+        summary.classB.sharesOutstanding !== undefined
+      ) {
+        summary.sharesOutstandingTotal =
+          summary.classA.sharesOutstanding + summary.classB.sharesOutstanding;
+      }
+
+      if (
+        summary.marketValueNonAffiliatesTotal === undefined &&
+        summary.classA.marketValue !== undefined &&
+        summary.classB.marketValue !== undefined
+      ) {
+        summary.marketValueNonAffiliatesTotal =
+          summary.classA.marketValue + summary.classB.marketValue;
+      }
+
+      return summary;
+    };
+
+    // Parse equity summary from tables
     let equitySummary = null;
-    if (tables.length > 0 && tables[0].rows.length > 0) {
+    if (tables.length > 0) {
       try {
-        const firstTable = tables[0];
+        // First parse flags from checkbox section
+        let isWellKnownSeasonedIssuer = false;
+        let isLargeAcceleratedFiler = false;
         
-        // Helper to parse boolean from :selected: or :unselected:
         const parseBoolean = (cell: string): boolean => {
           return cell.includes(':selected:');
         };
         
-        // Helper to parse numeric value from string like "$5,603,520,725"
-        const parseNumber = (cell: string): number => {
-          const cleaned = cell.replace(/[$,]/g, '').trim();
-          return parseFloat(cleaned) || 0;
-        };
-        
-        // Find rows by searching for key text
-        let isWellKnownSeasonedIssuer = false;
-        let isLargeAcceleratedFiler = false;
-        let classAMarketValue = 0;
-        let classAShares = 0;
-        let classBMarketValue = 0;
-        let classBShares = 0;
-        let marketValueTotal = 0;
-        
-        let foundClassBMarketValue = false;
-        
-        firstTable.rows.forEach((row: string[], idx: number) => {
-          const rowText = row.join(' ').toLowerCase();
-          
-          // Check for issuer status
-          if (rowText.includes('well-known seasoned issuer')) {
-            isWellKnownSeasonedIssuer = parseBoolean(row.join(' '));
-          }
-          
-          if (rowText.includes('large accelerated filer')) {
-            isLargeAcceleratedFiler = parseBoolean(row.join(' '));
-          }
-          
-          // Parse Class A market value: row[0] === 'Class A' and row[2] is dollar amount
-          if (row[0]?.trim() === 'Class A' && row[2]?.includes('$') && classAMarketValue === 0) {
-            classAMarketValue = parseNumber(row[2]);
-          }
-          
-          // Parse Class B market value: row[0] === 'Class B' and row[2] is dollar amount
-          if (row[0]?.trim() === 'Class B' && row[2]?.includes('$') && classBMarketValue === 0) {
-            classBMarketValue = parseNumber(row[2]);
-            foundClassBMarketValue = true;
-          }
-          
-          // Parse total market value: row[0] === '' and row[2] is dollar amount after Class B
-          if (foundClassBMarketValue && row[0]?.trim() === '' && row[2]?.includes('$') && marketValueTotal === 0) {
-            marketValueTotal = parseNumber(row[2]);
-          }
-          
-          // Parse Class A shares: later row where row[0] === 'Class A' and row[2] has no $
-          if (row[0]?.trim() === 'Class A' && row[2] && !row[2].includes('$') && classAShares === 0) {
-            const num = parseNumber(row[2]);
-            if (num > 100000) { // Reasonable share count threshold
-              classAShares = num;
+        // Look for issuer flags in first table
+        if (tables[0].rows.length > 0) {
+          tables[0].rows.forEach((row: string[]) => {
+            const rowText = row.join(' ').toLowerCase();
+            if (rowText.includes('well-known seasoned issuer')) {
+              isWellKnownSeasonedIssuer = parseBoolean(row.join(' '));
             }
-          }
-          
-          // Parse Class B shares: later row where row[0] === 'Class B' and row[2] has no $
-          if (row[0]?.trim() === 'Class B' && row[2] && !row[2].includes('$') && classBShares === 0) {
-            const num = parseNumber(row[2]);
-            if (num > 100000) { // Reasonable share count threshold
-              classBShares = num;
+            if (rowText.includes('large accelerated filer')) {
+              isLargeAcceleratedFiler = parseBoolean(row.join(' '));
             }
-          }
-        });
+          });
+        }
         
-        const sharesTotal = classAShares + classBShares;
-        
-        equitySummary = {
+        equitySummary = extractEquitySummary(tables, {
           isWellKnownSeasonedIssuer,
-          isLargeAcceleratedFiler,
-          marketValueNonAffiliatesTotal: marketValueTotal,
-          classA: {
-            marketValue: classAMarketValue,
-            sharesOutstanding: classAShares
-          },
-          classB: {
-            marketValue: classBMarketValue,
-            sharesOutstanding: classBShares
-          },
-          sharesOutstandingTotal: sharesTotal
-        };
+          isLargeAcceleratedFiler
+        });
         
         console.log('Parsed equity summary:', equitySummary);
       } catch (e) {
