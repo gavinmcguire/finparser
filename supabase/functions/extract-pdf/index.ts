@@ -129,6 +129,96 @@ serve(async (req) => {
 
     console.log(`Extracted ${pdfText.length} chars, ${tables.length} tables`);
 
+    // Parse equity summary from first table
+    let equitySummary = null;
+    if (tables.length > 0 && tables[0].rows.length > 0) {
+      try {
+        const firstTable = tables[0];
+        
+        // Helper to parse boolean from :selected: or :unselected:
+        const parseBoolean = (cell: string): boolean => {
+          return cell.includes(':selected:');
+        };
+        
+        // Helper to parse numeric value from string like "$5,603,520,725"
+        const parseNumber = (cell: string): number => {
+          const cleaned = cell.replace(/[$,]/g, '').trim();
+          return parseFloat(cleaned) || 0;
+        };
+        
+        // Find rows by searching for key text
+        let isWellKnownSeasonedIssuer = false;
+        let isLargeAcceleratedFiler = false;
+        let classAMarketValue = 0;
+        let classAShares = 0;
+        let classBMarketValue = 0;
+        let classBShares = 0;
+        
+        firstTable.rows.forEach((row: string[]) => {
+          const rowText = row.join(' ').toLowerCase();
+          
+          // Check for issuer status
+          if (rowText.includes('well-known seasoned issuer')) {
+            isWellKnownSeasonedIssuer = parseBoolean(row.join(' '));
+          }
+          
+          if (rowText.includes('large accelerated filer')) {
+            isLargeAcceleratedFiler = parseBoolean(row.join(' '));
+          }
+          
+          // Check for Class A data
+          if (rowText.includes('class a') && !rowText.includes('class b')) {
+            row.forEach(cell => {
+              if (cell.includes('$') && cell.includes(',')) {
+                const num = parseNumber(cell);
+                if (num > 1000000) { // Market value
+                  classAMarketValue = num;
+                } else if (num > 0) { // Shares
+                  classAShares = num;
+                }
+              }
+            });
+          }
+          
+          // Check for Class B data
+          if (rowText.includes('class b')) {
+            row.forEach(cell => {
+              if (cell.includes('$') && cell.includes(',')) {
+                const num = parseNumber(cell);
+                if (num > 1000000000) { // Market value (larger)
+                  classBMarketValue = num;
+                } else if (num > 1000000) { // Shares
+                  classBShares = num;
+                }
+              }
+            });
+          }
+        });
+        
+        const marketValueTotal = classAMarketValue + classBMarketValue;
+        const sharesTotal = classAShares + classBShares;
+        
+        equitySummary = {
+          isWellKnownSeasonedIssuer,
+          isLargeAcceleratedFiler,
+          marketValueNonAffiliatesTotal: marketValueTotal,
+          classA: {
+            marketValue: classAMarketValue,
+            sharesOutstanding: classAShares
+          },
+          classB: {
+            marketValue: classBMarketValue,
+            sharesOutstanding: classBShares
+          },
+          sharesOutstandingTotal: sharesTotal
+        };
+        
+        console.log('Parsed equity summary:', equitySummary);
+      } catch (e) {
+        console.error('Error parsing equity summary:', e);
+      }
+    }
+
     // Call Lovable AI for summary
     let summary = null;
     try {
@@ -175,6 +265,7 @@ serve(async (req) => {
         pdfText: pdfText,
         pdfTextPreview: pdfText.slice(0, 500) || null,
         tables: tables,
+        equitySummary: equitySummary,
         azureMessage: summary || `Extracted ${tables.length} tables from document`,
         pdfError: null
       }),
