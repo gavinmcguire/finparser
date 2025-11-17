@@ -30,9 +30,20 @@ serve(async (req) => {
     const pdfBase64 = fileData.split(',')[1] || fileData;
     
     console.log('Sending PDF to Azure Document Intelligence...');
+    console.log(`PDF base64 length: ${pdfBase64.length} characters`);
+    console.log(`Estimated PDF size: ~${Math.round(pdfBase64.length * 0.75 / 1024 / 1024 * 100) / 100} MB`);
 
     // Call Azure Document Intelligence API - Layout model for text + tables
     const analyzeUrl = `${docIntelEndpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
+    
+    const requestBody = {
+      base64Source: pdfBase64,
+      // Enable all features for comprehensive extraction
+      features: ['keyValuePairs']
+      // Note: NOT specifying 'pages' parameter means Azure should process ALL pages
+    };
+    
+    console.log('Azure request config: processing ALL pages (no pages parameter)');
     
     const analyzeResponse = await fetch(analyzeUrl, {
       method: 'POST',
@@ -40,11 +51,7 @@ serve(async (req) => {
         'Content-Type': 'application/json',
         'Ocp-Apim-Subscription-Key': docIntelKey,
       },
-      body: JSON.stringify({
-        base64Source: pdfBase64,
-        // Enable all features for comprehensive extraction
-        features: ['keyValuePairs']
-      })
+      body: JSON.stringify(requestBody)
     });
 
     if (!analyzeResponse.ok) {
