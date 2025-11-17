@@ -41,7 +41,9 @@ serve(async (req) => {
         'Ocp-Apim-Subscription-Key': docIntelKey,
       },
       body: JSON.stringify({
-        base64Source: pdfBase64
+        base64Source: pdfBase64,
+        // Enable all features for comprehensive extraction
+        features: ['keyValuePairs']
       })
     });
 
@@ -81,6 +83,8 @@ serve(async (req) => {
       if (resultData.status === 'succeeded') {
         result = resultData.analyzeResult;
         console.log('Analysis complete!');
+        console.log(`Pages analyzed: ${result.pages?.length || 0}`);
+        console.log(`Tables detected by Azure: ${result.tables?.length || 0}`);
         break;
       } else if (resultData.status === 'failed') {
         throw new Error('Azure analysis failed');
@@ -127,7 +131,15 @@ serve(async (req) => {
       };
     });
 
-    console.log(`Extracted ${pdfText.length} chars, ${tables.length} tables`);
+    console.log(`Extracted ${pdfText.length} chars, ${tables.length} tables from ${result.pages?.length || 0} pages`);
+    
+    // Log table details for debugging
+    if (tables.length > 0) {
+      console.log('Table summary:');
+      tables.forEach((table: any, idx: number) => {
+        console.log(`  Table ${idx + 1}: ${table.rowCount} rows × ${table.columnCount} cols`);
+      });
+    }
 
     // Helper to parse numeric value from string like "$5,603,520,725"
     const parseNumberCell = (raw?: string): number | undefined => {
