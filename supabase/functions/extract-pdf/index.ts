@@ -142,6 +142,24 @@ serve(async (req) => {
       return Number.isFinite(n) ? n : undefined;
     };
 
+    // Helper to parse income statement numbers (handles parentheses for negatives)
+    const parseIncomeStatementNumber = (raw?: string): number | undefined => {
+      if (!raw) return undefined;
+      const str = raw.toString().trim();
+      
+      // Check if wrapped in parentheses (means negative)
+      const isNegative = str.startsWith('(') && str.endsWith(')');
+      const cleaned = str
+        .replace(/[\$,()]/g, "")
+        .trim();
+      
+      if (!cleaned) return undefined;
+      const n = Number(cleaned);
+      if (!Number.isFinite(n)) return undefined;
+      
+      return isNegative ? -n : n;
+    };
+
     // Semantic equity parser that works generically across 10-K PDFs
     const extractEquitySummary = (tables: any[], flags?: { isWellKnownSeasonedIssuer?: boolean; isLargeAcceleratedFiler?: boolean }) => {
       const summary: any = {
@@ -227,8 +245,111 @@ serve(async (req) => {
       return summary;
     };
 
+    // Extract income statement data
+    const extractIncomeStatement = (tables: any[]) => {
+      const incomeStatement: any = {};
+      
+      // Find the income statement table
+      let incomeStatementTable = null;
+      let latestYearColIndex = -1;
+      
+      for (const table of tables) {
+        let hasRevenue = false;
+        let hasNetIncome = false;
+        
+        // Check if this table looks like an income statement
+        for (const row of table.rows) {
+          const label = (row[0] || "").toLowerCase();
+          if (label.includes("revenue") || label.includes("total revenues")) {
+            hasRevenue = true;
+          }
+          if (label.includes("net income") || label.includes("net earnings")) {
+            hasNetIncome = true;
+          }
+        }
+        
+        if (hasRevenue && hasNetIncome) {
+          incomeStatementTable = table;
+          
+          // Find the rightmost numeric column (latest year)
+          // Check a revenue row to find which columns have numeric data
+          for (const row of table.rows) {
+            const label = (row[0] || "").toLowerCase();
+            if (label.includes("revenue") || label.includes("total revenues")) {
+              // Find rightmost column with a numeric value
+              for (let i = row.length - 1; i >= 1; i--) {
+                const val = parseIncomeStatementNumber(row[i]);
+                if (val !== undefined) {
+                  latestYearColIndex = i;
+                  break;
+                }
+              }
+              break;
+            }
+          }
+          break;
+        }
+      }
+      
+      if (!incomeStatementTable || latestYearColIndex === -1) {
+        return incomeStatement;
+      }
+      
+      // Extract line items
+      for (const row of incomeStatementTable.rows) {
+        const label = (row[0] || "").toLowerCase();
+        const value = parseIncomeStatementNumber(row[latestYearColIndex]);
+        
+        if (value === undefined) continue;
+        
+        // Revenue
+        if ((label.includes("revenue") || label.includes("total revenues")) && 
+            !label.includes("cost") && !label.includes("expense")) {
+          incomeStatement.revenue = value;
+        }
+        
+        // Cost of Sales
+        if (label.includes("cost of sales") || label.includes("cost of goods")) {
+          incomeStatement.costOfSales = value;
+        }
+        
+        // Gross Profit
+        if (label.includes("gross profit") || label.includes("gross margin")) {
+          incomeStatement.grossProfit = value;
+        }
+        
+        // Operating Income
+        if ((label.includes("operating income") || label.includes("income from operations")) &&
+            !label.includes("non-operating")) {
+          incomeStatement.operatingIncome = value;
+        }
+        
+        // Net Income (company-specific, not noncontrolling interests)
+        if ((label.includes("net income") || label.includes("net earnings")) &&
+            (label.includes("nike") || label.includes("attributable") || 
+             (!label.includes("noncontrolling") && !label.includes("non-controlling")))) {
+          if (!incomeStatement.netIncome) { // Take first match
+            incomeStatement.netIncome = value;
+          }
+        }
+        
+        // Basic EPS
+        if (label.includes("basic") && (label.includes("earnings per share") || label.includes("eps"))) {
+          incomeStatement.basicEPS = value;
+        }
+        
+        // Diluted EPS
+        if (label.includes("diluted") && (label.includes("earnings per share") || label.includes("eps"))) {
+          incomeStatement.dilutedEPS = value;
+        }
+      }
+      
+      return incomeStatement;
+    };
+
     // Parse equity summary from tables
     let equitySummary = null;
+    let financials = null;
     if (tables.length > 0) {
       try {
         // First parse flags from checkbox section
@@ -260,6 +381,17 @@ serve(async (req) => {
         console.log('Parsed equity summary:', equitySummary);
       } catch (e) {
         console.error('Error parsing equity summary:', e);
+      }
+
+      // Parse income statement
+      try {
+        const incomeStatement = extractIncomeStatement(tables);
+        if (Object.keys(incomeStatement).length > 0) {
+          financials = { incomeStatement };
+          console.log('Parsed income statement:', incomeStatement);
+        }
+      } catch (e) {
+        console.error('Error parsing income statement:', e);
       }
     }
 
@@ -310,6 +442,7 @@ serve(async (req) => {
         pdfTextPreview: pdfText.slice(0, 500) || null,
         tables: tables,
         equitySummary: equitySummary,
+        financials: financials,
         azureMessage: summary || `Extracted ${tables.length} tables from document`,
         pdfError: null
       }),
