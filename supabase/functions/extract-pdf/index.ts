@@ -17,6 +17,8 @@ serve(async (req) => {
     const { fileName, fileData } = await req.json();
     
     console.log(`Processing file: ${fileName}`);
+    console.log(`Raw fileData length: ${fileData?.length || 0} characters`);
+    console.log(`FileData starts with: ${fileData?.substring(0, 50)}`);
 
     // Get Azure Document Intelligence credentials
     const docIntelEndpoint = Deno.env.get('AZURE_DOC_INTELLIGENCE_ENDPOINT');
@@ -32,6 +34,8 @@ serve(async (req) => {
     console.log('Sending PDF to Azure Document Intelligence...');
     console.log(`PDF base64 length: ${pdfBase64.length} characters`);
     console.log(`Estimated PDF size: ~${Math.round(pdfBase64.length * 0.75 / 1024 / 1024 * 100) / 100} MB`);
+    console.log(`First 100 chars of base64: ${pdfBase64.substring(0, 100)}`);
+    console.log(`Last 100 chars of base64: ${pdfBase64.substring(pdfBase64.length - 100)}`);
 
     // Call Azure Document Intelligence API - Layout model for text + tables
     const analyzeUrl = `${docIntelEndpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
@@ -44,6 +48,7 @@ serve(async (req) => {
     };
     
     console.log('Azure request config: processing ALL pages (no pages parameter)');
+    console.log(`Azure endpoint: ${analyzeUrl}`);
     
     const analyzeResponse = await fetch(analyzeUrl, {
       method: 'POST',
@@ -91,6 +96,7 @@ serve(async (req) => {
         result = resultData.analyzeResult;
         console.log('Analysis complete!');
         console.log(`Pages analyzed: ${result.pages?.length || 0}`);
+        console.log(`Content length: ${result.content?.length || 0} characters`);
         console.log(`Tables detected by Azure: ${result.tables?.length || 0}`);
         
         // Debug: Check if tables are nested under pages or at top level
@@ -100,12 +106,16 @@ serve(async (req) => {
         console.log(`  - result.pages exists: ${!!result.pages}`);
         console.log(`  - result.pages length: ${result.pages?.length || 0}`);
         
-        // Check if pages have tables property
+        // Check first and last page numbers
         if (result.pages && result.pages.length > 0) {
+          console.log(`  - First page number: ${result.pages[0].pageNumber || 'N/A'}`);
+          console.log(`  - Last page number: ${result.pages[result.pages.length - 1].pageNumber || 'N/A'}`);
           console.log(`  - First page has tables property: ${!!result.pages[0].tables}`);
-          result.pages.forEach((page: any, idx: number) => {
-            console.log(`    Page ${idx + 1}: ${page.tables?.length || 0} tables in page object`);
-          });
+        }
+        
+        // Check if we got partial content
+        if (result.content && result.content.length < 50000) {
+          console.log('WARNING: Content seems very short for a full 10-K document');
         }
         
         // Debug: log raw table info from Azure
