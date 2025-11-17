@@ -86,14 +86,30 @@ serve(async (req) => {
         console.log(`Pages analyzed: ${result.pages?.length || 0}`);
         console.log(`Tables detected by Azure: ${result.tables?.length || 0}`);
         
+        // Debug: Check if tables are nested under pages or at top level
+        console.log('Azure response structure check:');
+        console.log(`  - result.tables exists: ${!!result.tables}`);
+        console.log(`  - result.tables length: ${result.tables?.length || 0}`);
+        console.log(`  - result.pages exists: ${!!result.pages}`);
+        console.log(`  - result.pages length: ${result.pages?.length || 0}`);
+        
+        // Check if pages have tables property
+        if (result.pages && result.pages.length > 0) {
+          console.log(`  - First page has tables property: ${!!result.pages[0].tables}`);
+          result.pages.forEach((page: any, idx: number) => {
+            console.log(`    Page ${idx + 1}: ${page.tables?.length || 0} tables in page object`);
+          });
+        }
+        
         // Debug: log raw table info from Azure
         if (result.tables && result.tables.length > 0) {
-          console.log('Azure tables details:');
+          console.log('Azure tables details (from top-level result.tables):');
           result.tables.forEach((t: any, idx: number) => {
-            console.log(`  Table ${idx + 1}: ${t.rowCount} rows x ${t.columnCount} cols, boundingRegions: ${t.boundingRegions?.length || 0}`);
+            const pageSpan = t.boundingRegions?.map((br: any) => br.pageNumber).join(',') || 'unknown';
+            console.log(`  Table ${idx + 1}: ${t.rowCount} rows x ${t.columnCount} cols, pages: [${pageSpan}]`);
           });
         } else {
-          console.log('WARNING: Azure detected 0 tables in the PDF');
+          console.log('WARNING: Azure detected 0 tables in result.tables array');
         }
         break;
       } else if (resultData.status === 'failed') {
@@ -111,9 +127,12 @@ serve(async (req) => {
     const pdfText = result.content || "";
     
     console.log(`Azure returned ${result.tables?.length || 0} tables for processing`);
+    console.log('Starting table extraction from result.tables array...');
     
-    // Extract ALL tables from Azure result
+    // Extract ALL tables from Azure result (tables are at top level, not nested under pages)
+    // The Azure Document Intelligence API returns all tables in result.tables regardless of page
     const tables = (result.tables || []).map((table: any, index: number) => {
+      console.log(`Processing table ${index + 1}/${result.tables.length}...`);
       const columns: string[] = [];
       const rows: string[][] = [];
       
