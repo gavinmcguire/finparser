@@ -37,8 +37,8 @@ serve(async (req) => {
     console.log(`First 100 chars of base64: ${pdfBase64.substring(0, 100)}`);
     console.log(`Last 100 chars of base64: ${pdfBase64.substring(pdfBase64.length - 100)}`);
 
-    // Call Azure Document Intelligence API - Layout model for text + tables
-    const analyzeUrl = `${docIntelEndpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
+    // Call Azure Document Intelligence API - Document model for better financial doc support
+    const analyzeUrl = `${docIntelEndpoint}/formrecognizer/documentModels/prebuilt-document:analyze?api-version=2023-07-31`;
     
     const requestBody = {
       base64Source: pdfBase64,
