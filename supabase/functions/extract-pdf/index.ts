@@ -85,6 +85,16 @@ serve(async (req) => {
         console.log('Analysis complete!');
         console.log(`Pages analyzed: ${result.pages?.length || 0}`);
         console.log(`Tables detected by Azure: ${result.tables?.length || 0}`);
+        
+        // Debug: log raw table info from Azure
+        if (result.tables && result.tables.length > 0) {
+          console.log('Azure tables details:');
+          result.tables.forEach((t: any, idx: number) => {
+            console.log(`  Table ${idx + 1}: ${t.rowCount} rows x ${t.columnCount} cols, boundingRegions: ${t.boundingRegions?.length || 0}`);
+          });
+        } else {
+          console.log('WARNING: Azure detected 0 tables in the PDF');
+        }
         break;
       } else if (resultData.status === 'failed') {
         throw new Error('Azure analysis failed');
@@ -100,7 +110,9 @@ serve(async (req) => {
     // Extract text
     const pdfText = result.content || "";
     
-    // Extract tables
+    console.log(`Azure returned ${result.tables?.length || 0} tables for processing`);
+    
+    // Extract ALL tables from Azure result
     const tables = (result.tables || []).map((table: any, index: number) => {
       const columns: string[] = [];
       const rows: string[][] = [];
@@ -453,6 +465,7 @@ serve(async (req) => {
         pdfText: pdfText,
         pdfTextPreview: pdfText.slice(0, 500) || null,
         tables: tables,
+        tablesCount: tables.length,
         equitySummary: equitySummary,
         financials: financials,
         azureMessage: summary || `Extracted ${tables.length} tables from document`,
