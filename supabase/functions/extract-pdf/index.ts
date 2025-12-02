@@ -37,8 +37,8 @@ serve(async (req) => {
     console.log(`First 100 chars of base64: ${pdfBase64.substring(0, 100)}`);
     console.log(`Last 100 chars of base64: ${pdfBase64.substring(pdfBase64.length - 100)}`);
 
-    // Call Azure Document Intelligence API - Document model for better financial doc support
-    const analyzeUrl = `${docIntelEndpoint}/formrecognizer/documentModels/prebuilt-document:analyze?api-version=2023-07-31`;
+    // Call Azure Document Intelligence API - Layout model for comprehensive table extraction
+    const analyzeUrl = `${docIntelEndpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
     
     const requestBody = {
       base64Source: pdfBase64,
@@ -94,40 +94,41 @@ serve(async (req) => {
       
       if (resultData.status === 'succeeded') {
         result = resultData.analyzeResult;
-        console.log('Analysis complete!');
+        console.log('=== AZURE ANALYSIS COMPLETE ===');
         console.log(`Pages analyzed: ${result.pages?.length || 0}`);
         console.log(`Content length: ${result.content?.length || 0} characters`);
         console.log(`Tables detected by Azure: ${result.tables?.length || 0}`);
         
-        // Debug: Check if tables are nested under pages or at top level
-        console.log('Azure response structure check:');
-        console.log(`  - result.tables exists: ${!!result.tables}`);
-        console.log(`  - result.tables length: ${result.tables?.length || 0}`);
-        console.log(`  - result.pages exists: ${!!result.pages}`);
-        console.log(`  - result.pages length: ${result.pages?.length || 0}`);
+        // Log full Azure response structure for debugging
+        console.log('\n=== FULL AZURE RESPONSE STRUCTURE ===');
+        console.log(JSON.stringify({
+          pagesCount: result.pages?.length || 0,
+          tablesCount: result.tables?.length || 0,
+          contentLength: result.content?.length || 0,
+          firstPageNumber: result.pages?.[0]?.pageNumber,
+          lastPageNumber: result.pages?.[result.pages?.length - 1]?.pageNumber,
+          tablesSummary: result.tables?.map((t: any, idx: number) => ({
+            tableIndex: idx + 1,
+            rowCount: t.rowCount,
+            columnCount: t.columnCount,
+            pages: t.boundingRegions?.map((br: any) => br.pageNumber).join(',') || 'unknown'
+          }))
+        }, null, 2));
         
-        // Check first and last page numbers
-        if (result.pages && result.pages.length > 0) {
-          console.log(`  - First page number: ${result.pages[0].pageNumber || 'N/A'}`);
-          console.log(`  - Last page number: ${result.pages[result.pages.length - 1].pageNumber || 'N/A'}`);
-          console.log(`  - First page has tables property: ${!!result.pages[0].tables}`);
-        }
-        
-        // Check if we got partial content
-        if (result.content && result.content.length < 50000) {
-          console.log('WARNING: Content seems very short for a full 10-K document');
-        }
-        
-        // Debug: log raw table info from Azure
+        // Detailed table logging
         if (result.tables && result.tables.length > 0) {
-          console.log('Azure tables details (from top-level result.tables):');
+          console.log('\n=== DETAILED TABLE INFORMATION ===');
           result.tables.forEach((t: any, idx: number) => {
             const pageSpan = t.boundingRegions?.map((br: any) => br.pageNumber).join(',') || 'unknown';
-            console.log(`  Table ${idx + 1}: ${t.rowCount} rows x ${t.columnCount} cols, pages: [${pageSpan}]`);
+            console.log(`Table ${idx + 1}: ${t.rowCount} rows × ${t.columnCount} cols, pages: [${pageSpan}]`);
+            console.log(`  Cell count: ${t.cells?.length || 0}`);
+            console.log(`  First few cells: ${JSON.stringify(t.cells?.slice(0, 3).map((c: any) => ({ row: c.rowIndex, col: c.columnIndex, content: c.content })))}`);
           });
         } else {
-          console.log('WARNING: Azure detected 0 tables in result.tables array');
+          console.log('\n⚠️ WARNING: Azure detected 0 tables in result.tables array');
         }
+        
+        console.log('\n=== END AZURE RESPONSE ===\n');
         break;
       } else if (resultData.status === 'failed') {
         throw new Error('Azure analysis failed');
@@ -494,22 +495,39 @@ serve(async (req) => {
       console.log('AI summary failed (non-critical):', e);
     }
 
+    // Create response summary
+    const responseSummary = {
+      success: true,
+      message: "PDF processed successfully",
+      fileName: fileName,
+      timestamp: new Date().toISOString(),
+      pdfText: pdfText,
+      pdfTextPreview: pdfText.slice(0, 500) || null,
+      pdfTextLength: pdfText.length,
+      tables: tables,
+      tablesCount: tables.length,
+      azureTablesCount: azureTablesCount,
+      azureResponseSummary: {
+        pagesProcessed: result?.pages?.length || 0,
+        tablesDetected: azureTablesCount,
+        contentLength: pdfText.length,
+        tableDetails: tables.map((t: any, idx: number) => ({
+          tableIndex: idx + 1,
+          rows: t.rowCount,
+          columns: t.columnCount
+        }))
+      },
+      equitySummary: equitySummary,
+      financials: financials,
+      azureMessage: summary || `Extracted ${tables.length} tables from ${result?.pages?.length || 0} pages`,
+      pdfError: null
+    };
+
+    console.log('\n=== FINAL RESPONSE SUMMARY ===');
+    console.log(JSON.stringify(responseSummary.azureResponseSummary, null, 2));
+
     return new Response(
-      JSON.stringify({
-        success: true,
-        message: "PDF processed successfully",
-        fileName: fileName,
-        timestamp: new Date().toISOString(),
-        pdfText: pdfText,
-        pdfTextPreview: pdfText.slice(0, 500) || null,
-        tables: tables,
-        tablesCount: tables.length,
-        azureTablesCount: azureTablesCount,
-        equitySummary: equitySummary,
-        financials: financials,
-        azureMessage: summary || `Extracted ${tables.length} tables from document`,
-        pdfError: null
-      }),
+      JSON.stringify(responseSummary),
       { 
         headers: { 
           ...corsHeaders,
