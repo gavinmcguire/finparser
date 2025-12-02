@@ -23,7 +23,7 @@ interface TableExplorerProps {
 }
 
 const isJunkTable = (table: TableData): boolean => {
-  if (table.rowCount < 2) return true;
+  if (!table || table.rowCount < 2 || !table.cells || !Array.isArray(table.cells)) return true;
   
   const totalCells = table.rowCount * table.columnCount;
   const emptyCells = table.cells.filter(cell => !cell.content || cell.content.trim() === "").length;
