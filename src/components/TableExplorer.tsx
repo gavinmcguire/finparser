@@ -92,8 +92,11 @@ export const TableExplorer = ({ tables }: TableExplorerProps) => {
     let columns = selectedTable.columns;
     let rows = selectedTable.rows;
 
-    // If backend didn't provide columns/rows, derive them from cells
-    if ((!columns || !rows) && selectedTable.cells && selectedTable.cells.length > 0) {
+    // If backend didn't provide usable columns/rows, derive them from cells
+    if ((!columns || columns.length === 0 || !rows || rows.length === 0) &&
+      selectedTable.cells &&
+      selectedTable.cells.length > 0
+    ) {
       const maxRow = Math.max(...selectedTable.cells.map((c: any) => c.rowIndex || 0));
       const maxCol = Math.max(...selectedTable.cells.map((c: any) => c.columnIndex || 0));
 
