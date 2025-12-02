@@ -44,18 +44,21 @@ const tableToCSV = (table: TableData): string => {
   ).join("\n");
 };
 
-export const TableExplorer = ({ tables }: TableExplorerProps) => {
+export const TableExplorer = ({ tables = [] }: TableExplorerProps) => {
   const [selectedTableIndex, setSelectedTableIndex] = useState(0);
   const [showAllTables, setShowAllTables] = useState(false);
   const { toast } = useToast();
 
+  // Ensure tables is always an array
+  const safeTables = Array.isArray(tables) ? tables : [];
+
   const filteredTables = showAllTables 
-    ? tables 
-    : tables.filter(table => !isJunkTable(table));
+    ? safeTables 
+    : safeTables.filter(table => !isJunkTable(table));
 
   const displayedTables = filteredTables.map((table, originalIndex) => ({
     table,
-    originalIndex: tables.indexOf(table)
+    originalIndex: safeTables.indexOf(table)
   }));
 
   const selectedTable = displayedTables[selectedTableIndex];
@@ -90,7 +93,7 @@ export const TableExplorer = ({ tables }: TableExplorerProps) => {
     });
   };
 
-  if (tables.length === 0) {
+  if (safeTables.length === 0) {
     return (
       <Card>
         <CardContent className="py-8 text-center text-muted-foreground">
