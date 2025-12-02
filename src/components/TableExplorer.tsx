@@ -88,8 +88,31 @@ export const TableExplorer = ({ tables }: TableExplorerProps) => {
       );
     }
 
-    // Render as structured table if columns and rows exist
-    if (selectedTable.columns && selectedTable.rows) {
+    // Normalize into columns + rows for display
+    let columns = selectedTable.columns;
+    let rows = selectedTable.rows;
+
+    // If backend didn't provide columns/rows, derive them from cells
+    if ((!columns || !rows) && selectedTable.cells && selectedTable.cells.length > 0) {
+      const maxRow = Math.max(...selectedTable.cells.map((c: any) => c.rowIndex || 0));
+      const maxCol = Math.max(...selectedTable.cells.map((c: any) => c.columnIndex || 0));
+
+      const grid: string[][] = Array(maxRow + 1)
+        .fill(null)
+        .map(() => Array(maxCol + 1).fill(""));
+
+      selectedTable.cells.forEach((cell: any) => {
+        const row = cell.rowIndex || 0;
+        const col = cell.columnIndex || 0;
+        grid[row][col] = cell.content || "";
+      });
+
+      columns = grid[0]?.map((cell) => ({ content: cell })) || [];
+      rows = grid.slice(1).map((row) => ({ cells: row.map((cell) => ({ content: cell })) }));
+    }
+
+    // Render as structured table if we have columns and rows
+    if (columns && rows) {
       return (
         <div className="border rounded-lg overflow-hidden">
           <ScrollArea className="h-[500px] w-full">
@@ -97,7 +120,7 @@ export const TableExplorer = ({ tables }: TableExplorerProps) => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    {selectedTable.columns.map((column: any, idx: number) => (
+                    {columns.map((column: any, idx: number) => (
                       <TableHead key={idx} className="font-semibold bg-muted/50 whitespace-nowrap">
                         {column?.content || `Column ${idx + 1}`}
                       </TableHead>
@@ -105,7 +128,7 @@ export const TableExplorer = ({ tables }: TableExplorerProps) => {
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {selectedTable.rows.map((row: any, rowIdx: number) => (
+                  {rows.map((row: any, rowIdx: number) => (
                     <TableRow key={rowIdx}>
                       {row.cells?.map((cell: any, cellIdx: number) => (
                         <TableCell key={cellIdx} className="text-sm whitespace-nowrap">
@@ -122,7 +145,7 @@ export const TableExplorer = ({ tables }: TableExplorerProps) => {
       );
     }
 
-    // Fallback to JSON view
+    // Fallback to JSON view if structure is unexpected
     return (
       <ScrollArea className="h-[500px] w-full">
         <pre className="text-xs text-foreground bg-muted/30 p-4 rounded-lg whitespace-pre-wrap">
