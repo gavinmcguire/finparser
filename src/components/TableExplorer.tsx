@@ -123,23 +123,47 @@ export const TableExplorer = ({ tables }: TableExplorerProps) => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    {columns.map((column: any, idx: number) => (
-                      <TableHead key={idx} className="font-semibold bg-muted/50 whitespace-nowrap">
-                        {column?.content || `Column ${idx + 1}`}
-                      </TableHead>
-                    ))}
+                    {columns.map((column: any, idx: number) => {
+                      const headerText =
+                        typeof column === "string"
+                          ? column
+                          : column?.content || `Column ${idx + 1}`;
+
+                      return (
+                        <TableHead
+                          key={idx}
+                          className="font-semibold bg-muted/50 whitespace-nowrap"
+                        >
+                          {headerText || "—"}
+                        </TableHead>
+                      );
+                    })}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {rows.map((row: any, rowIdx: number) => (
-                    <TableRow key={rowIdx}>
-                      {row.cells?.map((cell: any, cellIdx: number) => (
-                        <TableCell key={cellIdx} className="text-sm whitespace-nowrap">
-                          {cell?.content || "—"}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))}
+                  {rows.map((row: any, rowIdx: number) => {
+                    const rowCells: any[] = Array.isArray(row)
+                      ? row
+                      : row?.cells || [];
+
+                    return (
+                      <TableRow key={rowIdx}>
+                        {rowCells.map((cell: any, cellIdx: number) => {
+                          const cellText =
+                            typeof cell === "string" ? cell : cell?.content;
+
+                          return (
+                            <TableCell
+                              key={cellIdx}
+                              className="text-sm whitespace-nowrap"
+                            >
+                              {cellText || "—"}
+                            </TableCell>
+                          );
+                        })}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             </div>
