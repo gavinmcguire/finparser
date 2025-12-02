@@ -88,46 +88,38 @@ export const TableExplorer = ({ tables }: TableExplorerProps) => {
       );
     }
 
-    // Try to render as structured table if cells exist
-    if (selectedTable.cells && selectedTable.cells.length > 0) {
-      const maxRow = Math.max(...selectedTable.cells.map((c: any) => c.rowIndex || 0));
-      const maxCol = Math.max(...selectedTable.cells.map((c: any) => c.columnIndex || 0));
-      
-      const grid: string[][] = Array(maxRow + 1).fill(null).map(() => 
-        Array(maxCol + 1).fill("")
-      );
-      
-      selectedTable.cells.forEach((cell: any) => {
-        const row = cell.rowIndex || 0;
-        const col = cell.columnIndex || 0;
-        grid[row][col] = cell.content || "";
-      });
+    // Render as structured table if columns and rows exist
+    if (selectedTable.columns && selectedTable.rows) {
+      const columns = selectedTable.columns;
+      const rows = selectedTable.rows;
 
       return (
         <div className="border rounded-lg overflow-hidden">
           <ScrollArea className="h-[500px] w-full">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  {grid[0]?.map((cell, idx) => (
-                    <TableHead key={idx} className="font-semibold bg-muted/50">
-                      {cell || `Column ${idx + 1}`}
-                    </TableHead>
-                  ))}
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {grid.slice(1).map((row, rowIdx) => (
-                  <TableRow key={rowIdx}>
-                    {row.map((cell, cellIdx) => (
-                      <TableCell key={cellIdx} className="text-sm">
-                        {cell}
-                      </TableCell>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    {columns.map((column: any, idx: number) => (
+                      <TableHead key={idx} className="font-semibold bg-muted/50 whitespace-nowrap">
+                        {column?.content || `Column ${idx + 1}`}
+                      </TableHead>
                     ))}
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+                </TableHeader>
+                <TableBody>
+                  {rows.map((row: any, rowIdx: number) => (
+                    <TableRow key={rowIdx}>
+                      {row.cells?.map((cell: any, cellIdx: number) => (
+                        <TableCell key={cellIdx} className="text-sm whitespace-nowrap">
+                          {cell?.content || "—"}
+                        </TableCell>
+                      ))}
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
           </ScrollArea>
         </div>
       );
