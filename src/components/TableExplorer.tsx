@@ -88,21 +88,8 @@ export const TableExplorer = ({ tables }: TableExplorerProps) => {
       );
     }
 
-    // Render as structured table if cells exist
-    if (selectedTable.cells && selectedTable.cells.length > 0) {
-      const maxRow = Math.max(...selectedTable.cells.map((c: any) => c.rowIndex || 0));
-      const maxCol = Math.max(...selectedTable.cells.map((c: any) => c.columnIndex || 0));
-      
-      const grid: string[][] = Array(maxRow + 1).fill(null).map(() => 
-        Array(maxCol + 1).fill("")
-      );
-      
-      selectedTable.cells.forEach((cell: any) => {
-        const row = cell.rowIndex || 0;
-        const col = cell.columnIndex || 0;
-        grid[row][col] = cell.content || "";
-      });
-
+    // Render as structured table if columns and rows exist
+    if (selectedTable.columns && selectedTable.rows) {
       return (
         <div className="border rounded-lg overflow-hidden">
           <ScrollArea className="h-[500px] w-full">
@@ -110,19 +97,19 @@ export const TableExplorer = ({ tables }: TableExplorerProps) => {
               <Table>
                 <TableHeader>
                   <TableRow>
-                    {grid[0]?.map((cell, idx) => (
+                    {selectedTable.columns.map((column: any, idx: number) => (
                       <TableHead key={idx} className="font-semibold bg-muted/50 whitespace-nowrap">
-                        {cell || `Column ${idx + 1}`}
+                        {column?.content || `Column ${idx + 1}`}
                       </TableHead>
                     ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {grid.slice(1).map((row, rowIdx) => (
+                  {selectedTable.rows.map((row: any, rowIdx: number) => (
                     <TableRow key={rowIdx}>
-                      {row.map((cell, cellIdx) => (
+                      {row.cells?.map((cell: any, cellIdx: number) => (
                         <TableCell key={cellIdx} className="text-sm whitespace-nowrap">
-                          {cell || "—"}
+                          {cell?.content || "—"}
                         </TableCell>
                       ))}
                     </TableRow>
