@@ -1,9 +1,11 @@
 import { useState } from "react";
 import { FileUpload } from "@/components/FileUpload";
+import { DocumentOverview } from "@/components/DocumentOverview";
+import { TableExplorer } from "@/components/TableExplorer";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Loader2 } from "lucide-react";
-import { useToast } from "@/components/ui/use-toast";
+import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
@@ -91,8 +93,8 @@ const Index = () => {
 
   return (
     <div className="min-h-screen bg-background">
-      <div className="container max-w-4xl mx-auto px-4 py-16">
-        <div className="text-center mb-12">
+      <div className="container mx-auto px-4 py-8">
+        <div className="text-center mb-8">
           <h1 className="text-4xl font-bold mb-3 text-foreground">
             IB PDF Extractor
           </h1>
@@ -101,7 +103,8 @@ const Index = () => {
           </p>
         </div>
 
-        <Card className="p-8 mb-6">
+        {/* Upload Section */}
+        <Card className="p-8 mb-6 max-w-4xl mx-auto">
           <FileUpload
             onFileSelect={handleFileSelect}
             selectedFile={selectedFile}
@@ -127,60 +130,23 @@ const Index = () => {
           )}
         </Card>
 
+        {/* Dashboard Layout */}
         {response && (
-          <div className="space-y-6">
-            {response.tables && response.tables.length > 0 && (
-              <Card className="p-6 border-primary/20">
-                <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-xl font-semibold text-card-foreground">
-                    Extracted Tables ({response.tablesCount || 0})
-                  </h2>
-                  <span className="text-sm text-muted-foreground">
-                    Azure detected: {response.azureTablesCount || 0} tables
-                  </span>
-                </div>
-                <div className="bg-muted rounded-lg p-4 max-h-[600px] overflow-auto">
-                  <pre className="text-sm text-muted-foreground whitespace-pre-wrap">
-                    {JSON.stringify(response.tables, null, 2)}
-                  </pre>
-                </div>
-              </Card>
-            )}
+          <div className="grid lg:grid-cols-2 gap-6">
+            {/* Left Column - Document Overview */}
+            <div>
+              <DocumentOverview
+                fileName={response.fileName || selectedFile?.name || "Unknown"}
+                tableCount={response.tables?.length || 0}
+                textLength={response.pdfText?.length || 0}
+                textPreview={response.pdfText || ""}
+              />
+            </div>
 
-            {response.azureMessage && (
-              <Card className="p-6 border-primary/20 bg-primary/5">
-                <h2 className="text-xl font-semibold mb-3 text-card-foreground flex items-center gap-2">
-                  <span className="text-primary">✓</span>
-                  Azure Summary
-                </h2>
-                <p className="text-card-foreground leading-relaxed">
-                  {response.azureMessage}
-                </p>
-              </Card>
-            )}
-
-            {response.azureError && (
-              <Card className="p-6 border-destructive/20 bg-destructive/5">
-                <h2 className="text-xl font-semibold mb-3 text-destructive flex items-center gap-2">
-                  <span>⚠</span>
-                  Azure Error
-                </h2>
-                <p className="text-destructive-foreground">
-                  {response.azureError}
-                </p>
-              </Card>
-            )}
-
-            <Card className="p-6">
-              <h2 className="text-xl font-semibold mb-4 text-card-foreground">
-                Full Response
-              </h2>
-              <div className="bg-muted p-4 rounded-lg max-h-[400px] overflow-auto">
-                <pre className="text-sm text-muted-foreground whitespace-pre-wrap">
-                  {JSON.stringify(response, null, 2)}
-                </pre>
-              </div>
-            </Card>
+            {/* Right Column - Table Explorer */}
+            <div className="lg:col-span-1">
+              <TableExplorer tables={response.tables || []} />
+            </div>
           </div>
         )}
       </div>
