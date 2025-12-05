@@ -83,12 +83,32 @@ export const TableExplorer = ({ tables, documentName = "Document" }: TableExplor
     try {
       const { columns, rows } = getNormalizedData(selectedTable);
       
-      // Build CSV
+      // Detect if a row is a section header (first cell has text, rest are blank)
+      const isSectionHeader = (row: string[]): boolean => {
+        if (!row || row.length === 0) return false;
+        const firstCell = sanitizeText(row[0])?.trim();
+        if (!firstCell) return false;
+        // Check if all other cells are empty
+        return row.slice(1).every((cell: string) => !sanitizeText(cell)?.trim());
+      };
+
+      // Format cell for CSV with sanitization
+      const formatCell = (cell: string): string => {
+        const sanitized = sanitizeText(cell) || "";
+        return `"${sanitized.replace(/"/g, '""')}"`;
+      };
+
+      // Build CSV with section header detection
       const csvRows = [
-        columns.map((c: string) => `"${(c || "").replace(/"/g, '""')}"`).join(","),
-        ...rows.map((row: string[]) => 
-          row.map((cell: string) => `"${(cell || "").replace(/"/g, '""')}"`).join(",")
-        )
+        columns.map((c: string) => formatCell(c)).join(","),
+        ...rows.map((row: string[]) => {
+          if (isSectionHeader(row)) {
+            // Mark section headers with ">> " prefix for visibility in Excel
+            const headerText = sanitizeText(row[0])?.trim() || "";
+            return [`">> ${headerText.replace(/"/g, '""')}"`, ...row.slice(1).map(() => '""')].join(",");
+          }
+          return row.map((cell: string) => formatCell(cell)).join(",");
+        })
       ];
       const csv = csvRows.join("\n");
 
