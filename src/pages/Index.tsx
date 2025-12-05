@@ -155,7 +155,10 @@ const Index = () => {
 
             {/* Table Explorer */}
             {response.tables && response.tables.length > 0 && (
-              <TableExplorer tables={response.tables} />
+              <TableExplorer 
+                tables={response.tables} 
+                documentName={response.fileName || selectedFile?.name || "Document"}
+              />
             )}
 
             {/* Error Display */}
