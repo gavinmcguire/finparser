@@ -6,14 +6,16 @@ import { TableExplorer } from "@/components/TableExplorer";
 import { DocumentHistory } from "@/components/DocumentHistory";
 import { CoreFinancialStatements } from "@/components/CoreFinancialStatements";
 import { FinancialSnapshot } from "@/components/FinancialSnapshot";
+import { KeyRatiosCard } from "@/components/KeyRatiosCard";
+import { CompanyComparison } from "@/components/CompanyComparison";
+import { InterviewPrepMode } from "@/components/InterviewPrepMode";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogOut, Shield, Sparkles, FileText, ChevronRight } from "lucide-react";
+import { Loader2, LogOut, Shield, Sparkles, FileText, ChevronRight, GitCompare } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { classifyAllTables, ClassifiedTable } from "@/lib/classifyTables";
 import { extractFinancialMetrics, FinancialMetrics } from "@/lib/extractFinancialMetrics";
 import { useAuth } from "@/contexts/AuthContext";
-
 interface DocumentAnalysis {
   id: string;
   file_name: string;
@@ -33,6 +35,7 @@ const Index = () => {
   const [selectedDocId, setSelectedDocId] = useState<string | undefined>();
   const [selectedTableIndex, setSelectedTableIndex] = useState(0);
   const [classifiedTables, setClassifiedTables] = useState<ClassifiedTable[]>([]);
+  const [showComparison, setShowComparison] = useState(false);
   const { toast } = useToast();
   const { signOut, isAdmin, profile, user } = useAuth();
   const navigate = useNavigate();
@@ -254,6 +257,17 @@ const Index = () => {
                   {profile.email}
                 </span>
               )}
+              {savedDocuments.length >= 2 && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setShowComparison(true)}
+                  className="border-border/50 hover:border-primary/50 hover:bg-primary/10"
+                >
+                  <GitCompare className="h-4 w-4 mr-2" />
+                  Compare
+                </Button>
+              )}
               {isAdmin && (
                 <Button 
                   variant="outline" 
@@ -340,6 +354,23 @@ const Index = () => {
                   </div>
                 )}
 
+                {/* Key Financial Ratios */}
+                {financialMetrics && (
+                  <div className="mb-6">
+                    <KeyRatiosCard metrics={financialMetrics} />
+                  </div>
+                )}
+
+                {/* Interview Prep Mode */}
+                {financialMetrics && (
+                  <div className="mb-6">
+                    <InterviewPrepMode 
+                      metrics={financialMetrics} 
+                      documentName={response.fileName || selectedFile?.name || "Document"}
+                    />
+                  </div>
+                )}
+
                 {/* Document Overview */}
                 <div className="mb-6">
                   <DocumentOverview
@@ -402,6 +433,13 @@ const Index = () => {
           </div>
         </div>
       </main>
+
+      {/* Company Comparison Modal */}
+      <CompanyComparison 
+        documents={savedDocuments}
+        isOpen={showComparison}
+        onClose={() => setShowComparison(false)}
+      />
     </div>
   );
 };
