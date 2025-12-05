@@ -71,6 +71,8 @@ IMPORTANT RULES:
 3. Be factual and analytical
 4. Focus on: growth trends, profitability, cash generation, and balance sheet strength
 5. Note any unusual or notable items based on the metrics
+6. Do NOT assume numbers are projections unless explicitly stated as such
+7. If data includes future periods without clarifying whether they are projections or actuals, refer to them as "later periods" instead of "projected"
 
 Output format: Return exactly 3-6 bullet points, each starting with "•". Be concise but insightful.`;
 
