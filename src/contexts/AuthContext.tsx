@@ -92,6 +92,37 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => subscription.unsubscribe();
   }, []);
 
+  // Subscribe to realtime profile changes for immediate access revocation
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const channel = supabase
+      .channel('profile-changes')
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'profiles',
+          filter: `id=eq.${user.id}`,
+        },
+        (payload) => {
+          const newProfile = payload.new as Profile;
+          setProfile(newProfile);
+          
+          // If user was unapproved, sign them out
+          if (newProfile.status !== 'approved' && !isAdmin) {
+            signOut();
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [user?.id, isAdmin]);
+
   const signIn = async (email: string, password: string) => {
     const { error } = await supabase.auth.signInWithPassword({ email, password });
     return { error: error as Error | null };
