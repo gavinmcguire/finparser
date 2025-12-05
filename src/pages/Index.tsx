@@ -35,7 +35,7 @@ const Index = () => {
   const [selectedTableIndex, setSelectedTableIndex] = useState(0);
   const [classifiedTables, setClassifiedTables] = useState<ClassifiedTable[]>([]);
   const { toast } = useToast();
-  const { signOut, isAdmin, profile } = useAuth();
+  const { signOut, isAdmin, profile, user } = useAuth();
   const navigate = useNavigate();
 
   // Load saved documents on mount
@@ -75,6 +75,8 @@ const Index = () => {
   };
 
   const saveDocumentAnalysis = async (data: any, fileName: string) => {
+    if (!user) return;
+    
     try {
       const { error } = await supabase.from('document_analyses').insert({
         file_name: fileName,
@@ -83,6 +85,7 @@ const Index = () => {
         equity_summary: data.equitySummary || null,
         financials: data.financials || null,
         summary: data.summary || null,
+        user_id: user.id,
       });
 
       if (error) throw error;
