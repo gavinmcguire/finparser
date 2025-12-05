@@ -3,21 +3,36 @@ import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Download, Copy, Table2, CheckCircle2, Sparkles, Loader2 } from "lucide-react";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { DerivedMetrics } from "./DerivedMetrics";
+import { ClassifiedTable, getStatementLabel } from "@/lib/classifyTables";
+import { Badge } from "@/components/ui/badge";
 
 interface TableExplorerProps {
   tables: any[];
   documentName?: string;
+  classifiedTables?: ClassifiedTable[];
+  selectedTableIndex?: number;
+  onSelectTable?: (index: number) => void;
 }
 
-export const TableExplorer = ({ tables, documentName = "Document" }: TableExplorerProps) => {
-  const [selectedTableIndex, setSelectedTableIndex] = useState(0);
+export const TableExplorer = ({ 
+  tables, 
+  documentName = "Document",
+  classifiedTables = [],
+  selectedTableIndex: externalSelectedIndex,
+  onSelectTable
+}: TableExplorerProps) => {
+  const [internalSelectedIndex, setInternalSelectedIndex] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<string | null>(null);
   const { toast } = useToast();
+
+  // Use external state if provided, otherwise use internal
+  const selectedTableIndex = externalSelectedIndex !== undefined ? externalSelectedIndex : internalSelectedIndex;
+  const setSelectedTableIndex = onSelectTable || setInternalSelectedIndex;
 
   const selectedTable = tables[selectedTableIndex];
 
@@ -253,12 +268,18 @@ export const TableExplorer = ({ tables, documentName = "Document" }: TableExplor
       {/* Table List Sidebar */}
       <Card className="lg:col-span-2">
         <CardHeader className="py-3 px-4">
-          <CardTitle className="text-sm font-medium">Tables ({tables.length})</CardTitle>
+          <CardTitle className="text-sm font-medium">Other Tables ({tables.filter((_, i) => {
+            const classified = classifiedTables.find(c => c.originalIndex === i);
+            return !classified || classified.type === 'other';
+          }).length})</CardTitle>
         </CardHeader>
         <CardContent className="p-2">
           <ScrollArea className="h-[450px]">
             <div className="space-y-1">
               {tables.map((table, index) => {
+                const classified = classifiedTables.find(c => c.originalIndex === index);
+                const isCore = classified && classified.type !== 'other';
+                
                 const rowCount = table.rowCount || 
                   (table.cells ? Math.max(...table.cells.map((c: any) => (c.rowIndex || 0) + 1)) : table.rows?.length || 0);
                 const colCount = table.columnCount || 
@@ -268,13 +289,20 @@ export const TableExplorer = ({ tables, documentName = "Document" }: TableExplor
                   <Button
                     key={index}
                     variant={selectedTableIndex === index ? "secondary" : "ghost"}
-                    className="w-full justify-start text-left h-auto py-2 px-2"
+                    className={`w-full justify-start text-left h-auto py-2 px-2 ${isCore ? 'opacity-50' : ''}`}
                     onClick={() => handleTableSelect(index)}
                   >
                     <div className="flex items-center gap-2 w-full">
                       <Table2 className="h-3.5 w-3.5 flex-shrink-0" />
                       <div className="flex-1 min-w-0">
-                        <p className="font-medium text-xs">Table {index + 1}</p>
+                        <div className="flex items-center gap-1">
+                          <p className="font-medium text-xs">Table {index + 1}</p>
+                          {isCore && (
+                            <Badge variant="outline" className="text-[8px] px-1 py-0 h-3.5">
+                              {getStatementLabel(classified.type).split(' ')[0]}
+                            </Badge>
+                          )}
+                        </div>
                         <p className="text-[10px] text-muted-foreground">
                           {rowCount}r × {colCount}c
                         </p>
@@ -295,9 +323,22 @@ export const TableExplorer = ({ tables, documentName = "Document" }: TableExplor
       <Card className="lg:col-span-5">
         <CardHeader className="py-3 px-4">
           <div className="flex items-center justify-between">
-            <CardTitle className="text-sm font-medium">
-              Table {selectedTableIndex + 1}
-            </CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-sm font-medium">
+                Table {selectedTableIndex + 1}
+              </CardTitle>
+              {(() => {
+                const classified = classifiedTables.find(c => c.originalIndex === selectedTableIndex);
+                if (classified && classified.type !== 'other') {
+                  return (
+                    <Badge variant="secondary" className="text-[10px]">
+                      {getStatementLabel(classified.type)}
+                    </Badge>
+                  );
+                }
+                return null;
+              })()}
+            </div>
             <div className="flex gap-1.5">
               <Button
                 variant="outline"
