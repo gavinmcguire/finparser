@@ -188,39 +188,35 @@ export const TableExplorer = ({ tables, documentName = "Document" }: TableExplor
 
     if (columns.length > 0) {
       return (
-        <div className="border rounded-lg overflow-hidden">
-          <ScrollArea className="h-[400px] w-full">
-            <div className="overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    {columns.map((column: string, idx: number) => (
-                      <TableHead
-                        key={idx}
-                        className="font-semibold bg-muted/50 whitespace-nowrap"
-                      >
-                        {sanitizeText(column) || `Column ${idx + 1}`}
-                      </TableHead>
-                    ))}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {rows.map((row: string[], rowIdx: number) => (
-                    <TableRow key={rowIdx}>
-                      {row.map((cell: string, cellIdx: number) => (
-                        <TableCell
-                          key={cellIdx}
-                          className="text-sm whitespace-nowrap"
-                        >
-                          {sanitizeText(cell) || "-"}
-                        </TableCell>
-                      ))}
-                    </TableRow>
+        <div className="border rounded-lg overflow-auto max-h-[400px]">
+          <Table className="min-w-max">
+            <TableHeader>
+              <TableRow>
+                {columns.map((column: string, idx: number) => (
+                  <TableHead
+                    key={idx}
+                    className="font-semibold bg-muted/50 whitespace-nowrap sticky top-0"
+                  >
+                    {sanitizeText(column) || `Column ${idx + 1}`}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {rows.map((row: string[], rowIdx: number) => (
+                <TableRow key={rowIdx}>
+                  {row.map((cell: string, cellIdx: number) => (
+                    <TableCell
+                      key={cellIdx}
+                      className="text-sm whitespace-nowrap"
+                    >
+                      {sanitizeText(cell) || "-"}
+                    </TableCell>
                   ))}
-                </TableBody>
-              </Table>
-            </div>
-          </ScrollArea>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
         </div>
       );
     }
