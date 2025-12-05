@@ -20,6 +20,28 @@ export const TableExplorer = ({ tables, documentName = "Document" }: TableExplor
 
   const selectedTable = tables[selectedTableIndex];
 
+  // Sanitize text: replace weird unicode dashes and garbled characters
+  const sanitizeText = (text: string): string => {
+    if (!text) return text;
+    return text
+      .replace(/â€"/g, '-')  // garbled em dash
+      .replace(/â€"/g, '-')  // garbled en dash
+      .replace(/—/g, '-')    // em dash
+      .replace(/–/g, '-')    // en dash
+      .replace(/―/g, '-')    // horizontal bar
+      .replace(/‐/g, '-')    // hyphen
+      .replace(/‑/g, '-')    // non-breaking hyphen
+      .replace(/‒/g, '-')    // figure dash
+      .replace(/â€™/g, "'")  // garbled apostrophe
+      .replace(/'/g, "'")    // right single quote
+      .replace(/'/g, "'")    // left single quote
+      .replace(/â€œ/g, '"')  // garbled left quote
+      .replace(/â€/g, '"')   // garbled right quote
+      .replace(/"/g, '"')    // left double quote
+      .replace(/"/g, '"')    // right double quote
+      .replace(/\u00A0/g, ' '); // non-breaking space
+  };
+
   // Get normalized columns and rows
   const getNormalizedData = (table: any) => {
     let columns = table.columns || [];
@@ -156,7 +178,7 @@ export const TableExplorer = ({ tables, documentName = "Document" }: TableExplor
                         key={idx}
                         className="font-semibold bg-muted/50 whitespace-nowrap"
                       >
-                        {column || `Column ${idx + 1}`}
+                        {sanitizeText(column) || `Column ${idx + 1}`}
                       </TableHead>
                     ))}
                   </TableRow>
@@ -169,7 +191,7 @@ export const TableExplorer = ({ tables, documentName = "Document" }: TableExplor
                           key={cellIdx}
                           className="text-sm whitespace-nowrap"
                         >
-                          {cell || "—"}
+                          {sanitizeText(cell) || "-"}
                         </TableCell>
                       ))}
                     </TableRow>
