@@ -1,24 +1,30 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-interface FinancialMetrics {
-  companyName: string;
-  period: string;
-  revenue: number | null;
-  revenueYoY: number | null;
-  grossMargin: number | null;
-  operatingMargin: number | null;
-  netMargin: number | null;
-  freeCashFlow: number | null;
-  fcfMargin: number | null;
-  cashAndEquivalents: number | null;
-  totalDebt: number | null;
-  netCash: number | null;
-}
+// Input validation schema
+const metricsSchema = z.object({
+  companyName: z.string().min(1).max(500),
+  period: z.string().min(1).max(100),
+  revenue: z.number().nullable(),
+  revenueYoY: z.number().nullable(),
+  grossMargin: z.number().nullable(),
+  operatingMargin: z.number().nullable(),
+  netMargin: z.number().nullable(),
+  freeCashFlow: z.number().nullable(),
+  fcfMargin: z.number().nullable(),
+  cashAndEquivalents: z.number().nullable(),
+  totalDebt: z.number().nullable(),
+  netCash: z.number().nullable(),
+});
+
+const requestSchema = z.object({
+  metrics: metricsSchema,
+});
 
 function formatCurrency(value: number | null): string {
   if (value === null) return 'N/A';
@@ -40,7 +46,21 @@ serve(async (req) => {
   }
 
   try {
-    const { metrics } = await req.json() as { metrics: FinancialMetrics };
+    // Parse and validate input
+    const rawBody = await req.json();
+    const parseResult = requestSchema.safeParse(rawBody);
+    
+    if (!parseResult.success) {
+      console.error('Input validation failed:', parseResult.error.errors);
+      return new Response(JSON.stringify({ 
+        error: 'Invalid input: ' + parseResult.error.errors.map(e => e.message).join(', ')
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    const { metrics } = parseResult.data;
     
     const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
     if (!LOVABLE_API_KEY) {

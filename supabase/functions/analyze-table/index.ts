@@ -1,9 +1,18 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Input validation schema
+const requestSchema = z.object({
+  documentName: z.string().min(1).max(500),
+  tableIndex: z.number().int().min(0).max(1000),
+  columns: z.array(z.string().max(1000)).max(100),
+  rows: z.array(z.array(z.string().max(10000))).max(5000),
+});
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -11,7 +20,22 @@ serve(async (req) => {
   }
 
   try {
-    const { documentName, tableIndex, columns, rows } = await req.json();
+    // Parse and validate input
+    const rawBody = await req.json();
+    const parseResult = requestSchema.safeParse(rawBody);
+    
+    if (!parseResult.success) {
+      console.error('Input validation failed:', parseResult.error.errors);
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Invalid input: ' + parseResult.error.errors.map(e => e.message).join(', ')
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    const { documentName, tableIndex, columns, rows } = parseResult.data;
     
     console.log(`Analyzing table ${tableIndex} from ${documentName}`);
     console.log(`Table has ${columns?.length || 0} columns and ${rows?.length || 0} rows`);
