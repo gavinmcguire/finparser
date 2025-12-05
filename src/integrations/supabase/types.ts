@@ -14,7 +14,39 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      document_analyses: {
+        Row: {
+          created_at: string
+          equity_summary: Json | null
+          file_name: string
+          financials: Json | null
+          id: string
+          pdf_text: string | null
+          summary: string | null
+          tables: Json | null
+        }
+        Insert: {
+          created_at?: string
+          equity_summary?: Json | null
+          file_name: string
+          financials?: Json | null
+          id?: string
+          pdf_text?: string | null
+          summary?: string | null
+          tables?: Json | null
+        }
+        Update: {
+          created_at?: string
+          equity_summary?: Json | null
+          file_name?: string
+          financials?: Json | null
+          id?: string
+          pdf_text?: string | null
+          summary?: string | null
+          tables?: Json | null
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
