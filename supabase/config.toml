@@ -1,13 +1,13 @@
 project_id = "vugzmergcmbyjjtajpsh"
 
 [functions.extract-pdf]
-verify_jwt = false
+verify_jwt = true
 
 [functions.analyze-table]
-verify_jwt = false
+verify_jwt = true
 
 [functions.generate-snapshot]
-verify_jwt = false
+verify_jwt = true
 
 [functions.generate-interview-questions]
-verify_jwt = false
+verify_jwt = true
