@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useNavigate } from "react-router-dom";
 import { FileUpload } from "@/components/FileUpload";
 import { DocumentOverview } from "@/components/DocumentOverview";
 import { TableExplorer } from "@/components/TableExplorer";
@@ -7,11 +8,12 @@ import { CoreFinancialStatements } from "@/components/CoreFinancialStatements";
 import { FinancialSnapshot } from "@/components/FinancialSnapshot";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Loader2, TrendingUp } from "lucide-react";
+import { Loader2, TrendingUp, LogOut, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { classifyAllTables, ClassifiedTable } from "@/lib/classifyTables";
 import { extractFinancialMetrics, FinancialMetrics } from "@/lib/extractFinancialMetrics";
+import { useAuth } from "@/contexts/AuthContext";
 
 interface DocumentAnalysis {
   id: string;
@@ -33,6 +35,8 @@ const Index = () => {
   const [selectedTableIndex, setSelectedTableIndex] = useState(0);
   const [classifiedTables, setClassifiedTables] = useState<ClassifiedTable[]>([]);
   const { toast } = useToast();
+  const { signOut, isAdmin, profile } = useAuth();
+  const navigate = useNavigate();
 
   // Load saved documents on mount
   useEffect(() => {
@@ -223,17 +227,36 @@ const Index = () => {
       {/* Header */}
       <header className="border-b border-border bg-card">
         <div className="container mx-auto px-4 py-4">
-          <div className="flex items-center gap-3">
-            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-              <TrendingUp className="h-6 w-6 text-primary" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                <TrendingUp className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-foreground">
+                  Financial Document Analyzer
+                </h1>
+                <p className="text-sm text-muted-foreground">
+                  Extract and analyze tables from SEC filings and financial documents
+                </p>
+              </div>
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-foreground">
-                Financial Document Analyzer
-              </h1>
-              <p className="text-sm text-muted-foreground">
-                Extract and analyze tables from SEC filings and financial documents
-              </p>
+            <div className="flex items-center gap-3">
+              {profile && (
+                <span className="text-sm text-muted-foreground hidden sm:inline">
+                  {profile.email}
+                </span>
+              )}
+              {isAdmin && (
+                <Button variant="outline" size="sm" onClick={() => navigate('/admin')}>
+                  <Shield className="h-4 w-4 mr-2" />
+                  Admin
+                </Button>
+              )}
+              <Button variant="ghost" size="sm" onClick={signOut}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign Out
+              </Button>
             </div>
           </div>
         </div>
