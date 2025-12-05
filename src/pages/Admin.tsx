@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { useToast } from '@/hooks/use-toast';
@@ -15,7 +14,8 @@ import {
   Loader2,
   Users,
   UserCheck,
-  UserX
+  UserX,
+  Sparkles
 } from 'lucide-react';
 
 interface UserProfile {
@@ -101,7 +101,12 @@ export default function Admin() {
   if (authLoading || isLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <div className="flex flex-col items-center gap-4">
+          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center animate-pulse">
+            <Sparkles className="h-6 w-6 text-primary-foreground" />
+          </div>
+          <Loader2 className="h-6 w-6 animate-spin text-primary" />
+        </div>
       </div>
     );
   }
@@ -117,21 +122,33 @@ export default function Admin() {
   const StatusBadge = ({ status }: { status: string }) => {
     switch (status) {
       case 'pending':
-        return <Badge variant="outline" className="bg-amber-500/10 text-amber-600 border-amber-500/20"><Clock className="h-3 w-3 mr-1" />Pending</Badge>;
+        return (
+          <Badge variant="outline" className="bg-warning/10 text-warning border-warning/20">
+            <Clock className="h-3 w-3 mr-1" />Pending
+          </Badge>
+        );
       case 'approved':
-        return <Badge variant="outline" className="bg-emerald-500/10 text-emerald-600 border-emerald-500/20"><Check className="h-3 w-3 mr-1" />Approved</Badge>;
+        return (
+          <Badge variant="outline" className="bg-success/10 text-success border-success/20">
+            <Check className="h-3 w-3 mr-1" />Approved
+          </Badge>
+        );
       case 'rejected':
-        return <Badge variant="outline" className="bg-red-500/10 text-red-600 border-red-500/20"><X className="h-3 w-3 mr-1" />Rejected</Badge>;
+        return (
+          <Badge variant="outline" className="bg-destructive/10 text-destructive border-destructive/20">
+            <X className="h-3 w-3 mr-1" />Rejected
+          </Badge>
+        );
       default:
         return null;
     }
   };
 
   const UserCard = ({ user: profile }: { user: UserProfile }) => (
-    <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg">
+    <div className="flex items-center justify-between p-4 bg-muted/30 rounded-xl border border-border/50 hover:border-border transition-colors">
       <div className="space-y-1">
         <p className="font-medium text-foreground">{profile.full_name || 'No name'}</p>
-        <p className="text-sm text-muted-foreground">{profile.email}</p>
+        <p className="text-sm text-muted-foreground font-mono">{profile.email}</p>
         <p className="text-xs text-muted-foreground">
           Joined {new Date(profile.created_at).toLocaleDateString()}
         </p>
@@ -144,7 +161,7 @@ export default function Admin() {
               <Button
                 size="sm"
                 variant="outline"
-                className="text-emerald-600 hover:bg-emerald-500/10"
+                className="text-success hover:bg-success/10 hover:border-success/50"
                 onClick={() => updateUserStatus(profile.id, 'approved')}
                 disabled={updatingId === profile.id}
               >
@@ -159,7 +176,7 @@ export default function Admin() {
               <Button
                 size="sm"
                 variant="outline"
-                className="text-red-600 hover:bg-red-500/10"
+                className="text-destructive hover:bg-destructive/10 hover:border-destructive/50"
                 onClick={() => updateUserStatus(profile.id, 'rejected')}
                 disabled={updatingId === profile.id}
               >
@@ -177,23 +194,32 @@ export default function Admin() {
   );
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative">
+      {/* Background effects */}
+      <div className="fixed inset-0 grid-pattern opacity-30 pointer-events-none" />
+      <div className="fixed top-0 right-1/4 w-[500px] h-[500px] bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+      
       {/* Header */}
-      <header className="border-b border-border bg-card">
-        <div className="container mx-auto px-4 py-4">
+      <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+        <div className="container mx-auto px-4 py-3">
           <div className="flex items-center gap-4">
-            <Button variant="ghost" size="icon" onClick={() => navigate('/')}>
+            <Button 
+              variant="ghost" 
+              size="icon" 
+              onClick={() => navigate('/')}
+              className="hover:bg-muted"
+            >
               <ArrowLeft className="h-5 w-5" />
             </Button>
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <Shield className="h-6 w-6 text-primary" />
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-accent to-primary flex items-center justify-center glow-accent">
+                <Shield className="h-5 w-5 text-accent-foreground" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">
-                  Admin Dashboard
+                <h1 className="text-lg font-bold font-mono tracking-tight">
+                  <span className="gradient-text">Admin Dashboard</span>
                 </h1>
-                <p className="text-sm text-muted-foreground">
+                <p className="text-xs text-muted-foreground">
                   Manage user access and approvals
                 </p>
               </div>
@@ -202,43 +228,43 @@ export default function Admin() {
         </div>
       </header>
 
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-6 relative">
         {/* Stats */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-          <Card className="p-4 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-lg bg-amber-500/10 flex items-center justify-center">
-              <Clock className="h-6 w-6 text-amber-600" />
+          <div className="stat-card flex items-center gap-4 hover-lift">
+            <div className="h-12 w-12 rounded-xl bg-warning/10 flex items-center justify-center">
+              <Clock className="h-6 w-6 text-warning" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{pendingUsers.length}</p>
+              <p className="text-3xl font-bold font-mono text-foreground">{pendingUsers.length}</p>
               <p className="text-sm text-muted-foreground">Pending</p>
             </div>
-          </Card>
-          <Card className="p-4 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-lg bg-emerald-500/10 flex items-center justify-center">
-              <UserCheck className="h-6 w-6 text-emerald-600" />
+          </div>
+          <div className="stat-card flex items-center gap-4 hover-lift">
+            <div className="h-12 w-12 rounded-xl bg-success/10 flex items-center justify-center">
+              <UserCheck className="h-6 w-6 text-success" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{approvedUsers.length}</p>
+              <p className="text-3xl font-bold font-mono text-foreground">{approvedUsers.length}</p>
               <p className="text-sm text-muted-foreground">Approved</p>
             </div>
-          </Card>
-          <Card className="p-4 flex items-center gap-4">
-            <div className="h-12 w-12 rounded-lg bg-red-500/10 flex items-center justify-center">
-              <UserX className="h-6 w-6 text-red-600" />
+          </div>
+          <div className="stat-card flex items-center gap-4 hover-lift">
+            <div className="h-12 w-12 rounded-xl bg-destructive/10 flex items-center justify-center">
+              <UserX className="h-6 w-6 text-destructive" />
             </div>
             <div>
-              <p className="text-2xl font-bold text-foreground">{rejectedUsers.length}</p>
+              <p className="text-3xl font-bold font-mono text-foreground">{rejectedUsers.length}</p>
               <p className="text-sm text-muted-foreground">Rejected</p>
             </div>
-          </Card>
+          </div>
         </div>
 
         {/* Pending Users */}
         {pendingUsers.length > 0 && (
-          <Card className="p-6 mb-6 border-amber-500/20">
+          <div className="glass-card rounded-2xl p-6 mb-6 border-warning/30 animate-fade-in">
             <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
-              <Clock className="h-5 w-5 text-amber-600" />
+              <Clock className="h-5 w-5 text-warning" />
               Pending Approval ({pendingUsers.length})
             </h2>
             <div className="space-y-3">
@@ -246,11 +272,11 @@ export default function Admin() {
                 <UserCard key={profile.id} user={profile} />
               ))}
             </div>
-          </Card>
+          </div>
         )}
 
         {/* All Users */}
-        <Card className="p-6">
+        <div className="glass-card rounded-2xl p-6 animate-fade-in">
           <h2 className="text-lg font-semibold text-foreground mb-4 flex items-center gap-2">
             <Users className="h-5 w-5 text-primary" />
             All Users ({users.length})
@@ -266,7 +292,7 @@ export default function Admin() {
               ))}
             </div>
           )}
-        </Card>
+        </div>
       </main>
     </div>
   );
