@@ -1,7 +1,6 @@
 import { useState, useEffect } from 'react';
-import { Card } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Loader2, Sparkles, TrendingUp, TrendingDown, Minus, RefreshCw } from 'lucide-react';
+import { Loader2, Sparkles, TrendingUp, TrendingDown, Minus, RefreshCw, Zap } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { FinancialMetrics, hasMinimumMetrics } from '@/lib/extractFinancialMetrics';
 import { useToast } from '@/hooks/use-toast';
@@ -26,8 +25,8 @@ function formatPercent(value: number | null): string {
 
 function TrendIndicator({ value }: { value: number | null }) {
   if (value === null) return null;
-  if (value > 0) return <TrendingUp className="h-4 w-4 text-emerald-500" />;
-  if (value < 0) return <TrendingDown className="h-4 w-4 text-red-500" />;
+  if (value > 0) return <TrendingUp className="h-4 w-4 text-success" />;
+  if (value < 0) return <TrendingDown className="h-4 w-4 text-destructive" />;
   return <Minus className="h-4 w-4 text-muted-foreground" />;
 }
 
@@ -38,14 +37,14 @@ function MetricCard({ label, value, subValue, trend }: {
   trend?: number | null;
 }) {
   return (
-    <div className="bg-muted/50 rounded-lg p-3 space-y-1">
-      <p className="text-xs text-muted-foreground uppercase tracking-wide">{label}</p>
+    <div className="stat-card group">
+      <p className="text-xs text-muted-foreground uppercase tracking-wide mb-2">{label}</p>
       <div className="flex items-center gap-2">
-        <p className="text-lg font-semibold text-foreground">{value}</p>
+        <p className="text-xl font-bold font-mono text-foreground">{value}</p>
         {trend !== undefined && <TrendIndicator value={trend} />}
       </div>
       {subValue && (
-        <p className={`text-xs ${trend !== null && trend !== undefined ? (trend >= 0 ? 'text-emerald-600' : 'text-red-600') : 'text-muted-foreground'}`}>
+        <p className={`text-xs mt-1 ${trend !== null && trend !== undefined ? (trend >= 0 ? 'text-success' : 'text-destructive') : 'text-muted-foreground'}`}>
           {subValue}
         </p>
       )}
@@ -94,22 +93,27 @@ export function FinancialSnapshot({ metrics }: FinancialSnapshotProps) {
   const bullets = analysis?.split('\n').filter(line => line.trim().startsWith('•')) || [];
 
   return (
-    <Card className="p-6 border-primary/20 bg-gradient-to-br from-primary/5 to-transparent">
+    <div className="glass-card rounded-2xl p-6 animate-fade-in">
       {/* Header */}
       <div className="flex items-start justify-between mb-6">
         <div className="flex items-center gap-3">
-          <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-            <Sparkles className="h-5 w-5 text-primary" />
+          <div className="h-12 w-12 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center glow-primary">
+            <Zap className="h-6 w-6 text-primary-foreground" />
           </div>
           <div>
-            <h2 className="text-lg font-bold text-foreground">
-              {metrics.companyName} – {metrics.period}
+            <h2 className="text-xl font-bold font-mono">
+              <span className="gradient-text">{metrics.companyName}</span>
+              <span className="text-muted-foreground font-normal ml-2">– {metrics.period}</span>
             </h2>
             <p className="text-sm text-muted-foreground">AI Financial Snapshot</p>
           </div>
         </div>
         {!hasLoaded ? (
-          <Button onClick={generateAnalysis} disabled={isLoading} size="sm" variant="outline">
+          <Button 
+            onClick={generateAnalysis} 
+            disabled={isLoading} 
+            className="bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 glow-primary"
+          >
             {isLoading ? (
               <>
                 <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -123,7 +127,7 @@ export function FinancialSnapshot({ metrics }: FinancialSnapshotProps) {
             )}
           </Button>
         ) : (
-          <Button onClick={generateAnalysis} disabled={isLoading} size="sm" variant="ghost">
+          <Button onClick={generateAnalysis} disabled={isLoading} size="icon" variant="ghost" className="hover:bg-muted">
             <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
         )}
@@ -167,35 +171,35 @@ export function FinancialSnapshot({ metrics }: FinancialSnapshotProps) {
 
       {/* AI Analysis */}
       {hasLoaded && (
-        <div className="border-t border-border pt-4">
-          <h3 className="text-sm font-medium text-foreground mb-3 flex items-center gap-2">
+        <div className="border-t border-border/50 pt-5 animate-fade-in">
+          <h3 className="text-sm font-semibold text-foreground mb-4 flex items-center gap-2">
             <Sparkles className="h-4 w-4 text-primary" />
             AI Analysis
           </h3>
           {bullets.length > 0 ? (
-            <ul className="space-y-2">
+            <ul className="space-y-3">
               {bullets.map((bullet, idx) => (
-                <li key={idx} className="text-sm text-muted-foreground flex items-start gap-2">
-                  <span className="text-primary mt-0.5">•</span>
-                  <span>{bullet.replace(/^•\s*/, '')}</span>
+                <li key={idx} className="text-sm text-muted-foreground flex items-start gap-3 bg-muted/30 rounded-lg p-3">
+                  <span className="text-primary font-bold">•</span>
+                  <span className="leading-relaxed">{bullet.replace(/^•\s*/, '')}</span>
                 </li>
               ))}
             </ul>
           ) : (
-            <p className="text-sm text-muted-foreground">{analysis}</p>
+            <p className="text-sm text-muted-foreground bg-muted/30 rounded-lg p-4">{analysis}</p>
           )}
         </div>
       )}
 
       {/* Loading state for analysis */}
       {isLoading && !hasLoaded && (
-        <div className="border-t border-border pt-4">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+        <div className="border-t border-border/50 pt-5">
+          <div className="flex items-center gap-3 text-sm text-muted-foreground bg-muted/30 rounded-lg p-4">
+            <Loader2 className="h-4 w-4 animate-spin text-primary" />
             Generating AI analysis...
           </div>
         </div>
       )}
-    </Card>
+    </div>
   );
 }

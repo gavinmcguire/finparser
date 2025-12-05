@@ -7,8 +7,7 @@ import { DocumentHistory } from "@/components/DocumentHistory";
 import { CoreFinancialStatements } from "@/components/CoreFinancialStatements";
 import { FinancialSnapshot } from "@/components/FinancialSnapshot";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Loader2, TrendingUp, LogOut, Shield } from "lucide-react";
+import { Loader2, LogOut, Shield, Sparkles, FileText, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { classifyAllTables, ClassifiedTable } from "@/lib/classifyTables";
@@ -226,37 +225,52 @@ const Index = () => {
   };
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen bg-background relative">
+      {/* Background effects */}
+      <div className="fixed inset-0 grid-pattern opacity-30 pointer-events-none" />
+      <div className="fixed top-0 left-1/4 w-[500px] h-[500px] bg-primary/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="fixed bottom-0 right-1/4 w-[500px] h-[500px] bg-accent/10 rounded-full blur-3xl pointer-events-none" />
+      
       {/* Header */}
-      <header className="border-b border-border bg-card">
-        <div className="container mx-auto px-4 py-4">
+      <header className="sticky top-0 z-50 border-b border-border/50 bg-background/80 backdrop-blur-xl">
+        <div className="container mx-auto px-4 py-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
-                <TrendingUp className="h-6 w-6 text-primary" />
+              <div className="h-10 w-10 rounded-xl bg-gradient-to-br from-primary to-accent flex items-center justify-center glow-primary">
+                <Sparkles className="h-5 w-5 text-primary-foreground" />
               </div>
               <div>
-                <h1 className="text-xl font-bold text-foreground">
-                  Financial Document Analyzer
+                <h1 className="text-lg font-bold font-mono tracking-tight">
+                  <span className="gradient-text">FinAnalyzer</span>
                 </h1>
-                <p className="text-sm text-muted-foreground">
-                  Extract and analyze tables from SEC filings and financial documents
+                <p className="text-xs text-muted-foreground">
+                  AI-powered document analysis
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {profile && (
-                <span className="text-sm text-muted-foreground hidden sm:inline">
+                <span className="text-sm text-muted-foreground hidden sm:inline px-3 py-1.5 rounded-lg bg-muted/50">
                   {profile.email}
                 </span>
               )}
               {isAdmin && (
-                <Button variant="outline" size="sm" onClick={() => navigate('/admin')}>
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => navigate('/admin')}
+                  className="border-border/50 hover:border-primary/50 hover:bg-primary/10"
+                >
                   <Shield className="h-4 w-4 mr-2" />
                   Admin
                 </Button>
               )}
-              <Button variant="ghost" size="sm" onClick={signOut}>
+              <Button 
+                variant="ghost" 
+                size="sm" 
+                onClick={signOut}
+                className="hover:bg-destructive/10 hover:text-destructive"
+              >
                 <LogOut className="h-4 w-4 mr-2" />
                 Sign Out
               </Button>
@@ -266,12 +280,19 @@ const Index = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-8">
+      <main className="container mx-auto px-4 py-6 relative">
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Left Sidebar - Upload & History */}
           <div className="space-y-6">
             {/* Upload Section */}
-            <Card className="p-4 border-primary/20">
+            <div className="glass-card rounded-2xl p-5 hover-lift">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="h-8 w-8 rounded-lg bg-primary/10 flex items-center justify-center">
+                  <FileText className="h-4 w-4 text-primary" />
+                </div>
+                <h2 className="font-semibold text-sm">Upload Document</h2>
+              </div>
+              
               <FileUpload
                 onFileSelect={handleFileSelect}
                 selectedFile={selectedFile}
@@ -282,7 +303,7 @@ const Index = () => {
                 <Button
                   onClick={handleExtractTables}
                   disabled={isProcessing}
-                  className="w-full mt-4"
+                  className="w-full mt-4 h-11 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 glow-primary"
                 >
                   {isProcessing ? (
                     <>
@@ -290,11 +311,14 @@ const Index = () => {
                       Analyzing...
                     </>
                   ) : (
-                    "Analyze Document"
+                    <>
+                      Analyze Document
+                      <ChevronRight className="ml-2 h-4 w-4" />
+                    </>
                   )}
                 </Button>
               )}
-            </Card>
+            </div>
 
             {/* Document History */}
             <DocumentHistory
@@ -308,28 +332,34 @@ const Index = () => {
           {/* Main Content Area */}
           <div className="lg:col-span-3 space-y-6">
             {response ? (
-              <>
+              <div className="animate-fade-in">
                 {/* AI Financial Snapshot */}
                 {financialMetrics && (
-                  <FinancialSnapshot metrics={financialMetrics} />
+                  <div className="mb-6">
+                    <FinancialSnapshot metrics={financialMetrics} />
+                  </div>
                 )}
 
                 {/* Document Overview */}
-                <DocumentOverview
-                  fileName={response.fileName || selectedFile?.name || "Unknown"}
-                  tableCount={response.tablesCount || response.tables?.length || 0}
-                  azureTableCount={response.azureTablesCount || 0}
-                  textLength={response.pdfText?.length || 0}
-                  textPreview={response.pdfTextPreview || response.pdfText?.substring(0, 500)}
-                />
+                <div className="mb-6">
+                  <DocumentOverview
+                    fileName={response.fileName || selectedFile?.name || "Unknown"}
+                    tableCount={response.tablesCount || response.tables?.length || 0}
+                    azureTableCount={response.azureTablesCount || 0}
+                    textLength={response.pdfText?.length || 0}
+                    textPreview={response.pdfTextPreview || response.pdfText?.substring(0, 500)}
+                  />
+                </div>
 
                 {/* Core Financial Statements */}
                 {classifiedTables.length > 0 && (
-                  <CoreFinancialStatements
-                    classifiedTables={classifiedTables}
-                    onSelectTable={setSelectedTableIndex}
-                    selectedIndex={selectedTableIndex}
-                  />
+                  <div className="mb-6">
+                    <CoreFinancialStatements
+                      classifiedTables={classifiedTables}
+                      onSelectTable={setSelectedTableIndex}
+                      selectedIndex={selectedTableIndex}
+                    />
+                  </div>
                 )}
 
                 {/* Table Explorer */}
@@ -345,27 +375,29 @@ const Index = () => {
 
                 {/* Error Display */}
                 {response.azureError && (
-                  <Card className="p-6 border-destructive/20 bg-destructive/5">
+                  <div className="glass-card rounded-2xl p-6 border-destructive/30 bg-destructive/5">
                     <h2 className="text-lg font-semibold mb-2 text-destructive flex items-center gap-2">
                       <span>⚠</span>
                       Processing Error
                     </h2>
-                    <p className="text-sm text-destructive-foreground">
+                    <p className="text-sm text-muted-foreground">
                       {response.azureError}
                     </p>
-                  </Card>
+                  </div>
                 )}
-              </>
+              </div>
             ) : (
-              <Card className="p-12 text-center">
-                <TrendingUp className="h-12 w-12 text-muted-foreground mx-auto mb-4" />
-                <h2 className="text-lg font-medium text-foreground mb-2">
+              <div className="glass-card rounded-2xl p-16 text-center animate-fade-in">
+                <div className="inline-flex items-center justify-center w-20 h-20 rounded-2xl bg-gradient-to-br from-primary/20 to-accent/20 mb-6">
+                  <Sparkles className="h-10 w-10 text-primary" />
+                </div>
+                <h2 className="text-xl font-semibold mb-3">
                   No Document Selected
                 </h2>
-                <p className="text-sm text-muted-foreground">
-                  Upload a new PDF or select a document from history to view analysis
+                <p className="text-muted-foreground max-w-md mx-auto">
+                  Upload a new PDF or select a document from history to start analyzing financial data with AI-powered insights
                 </p>
-              </Card>
+              </div>
             )}
           </div>
         </div>
