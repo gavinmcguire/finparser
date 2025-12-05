@@ -6,6 +6,7 @@ import { Download, Copy, Table2, CheckCircle2, Sparkles, Loader2 } from "lucide-
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
+import { DerivedMetrics } from "./DerivedMetrics";
 
 interface TableExplorerProps {
   tables: any[];
@@ -336,8 +337,12 @@ export const TableExplorer = ({ tables, documentName = "Document" }: TableExplor
             </div>
           </div>
         </CardHeader>
-        <CardContent className="px-4 pb-4">
+        <CardContent className="px-4 pb-4 space-y-4">
           {renderTableContent()}
+          {selectedTable && (() => {
+            const { columns, rows } = getNormalizedData(selectedTable);
+            return <DerivedMetrics columns={columns} rows={rows} />;
+          })()}
         </CardContent>
       </Card>
 
