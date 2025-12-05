@@ -1,15 +1,17 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { FileUpload } from "@/components/FileUpload";
 import { DocumentOverview } from "@/components/DocumentOverview";
 import { TableExplorer } from "@/components/TableExplorer";
 import { DocumentHistory } from "@/components/DocumentHistory";
 import { CoreFinancialStatements } from "@/components/CoreFinancialStatements";
+import { FinancialSnapshot } from "@/components/FinancialSnapshot";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Loader2, TrendingUp } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { classifyAllTables, ClassifiedTable } from "@/lib/classifyTables";
+import { extractFinancialMetrics, FinancialMetrics } from "@/lib/extractFinancialMetrics";
 
 interface DocumentAnalysis {
   id: string;
@@ -46,6 +48,12 @@ const Index = () => {
       setClassifiedTables([]);
     }
   }, [response?.tables]);
+
+  // Compute financial metrics from classified tables
+  const financialMetrics = useMemo<FinancialMetrics | null>(() => {
+    if (classifiedTables.length === 0 || !response?.fileName) return null;
+    return extractFinancialMetrics(classifiedTables, response.fileName);
+  }, [classifiedTables, response?.fileName]);
 
   const loadSavedDocuments = async () => {
     try {
@@ -275,6 +283,11 @@ const Index = () => {
           <div className="lg:col-span-3 space-y-6">
             {response ? (
               <>
+                {/* AI Financial Snapshot */}
+                {financialMetrics && (
+                  <FinancialSnapshot metrics={financialMetrics} />
+                )}
+
                 {/* Document Overview */}
                 <DocumentOverview
                   fileName={response.fileName || selectedFile?.name || "Unknown"}
