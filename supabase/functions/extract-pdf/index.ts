@@ -1,10 +1,17 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
+
+// Input validation schema
+const requestSchema = z.object({
+  fileName: z.string().min(1).max(255),
+  fileData: z.string().min(1).max(100_000_000), // ~75MB base64 limit
+});
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -14,7 +21,22 @@ serve(async (req) => {
   try {
     console.log('PDF extraction request received');
     
-    const { fileName, fileData } = await req.json();
+    // Parse and validate input
+    const rawBody = await req.json();
+    const parseResult = requestSchema.safeParse(rawBody);
+    
+    if (!parseResult.success) {
+      console.error('Input validation failed:', parseResult.error.errors);
+      return new Response(JSON.stringify({ 
+        success: false, 
+        error: 'Invalid input: ' + parseResult.error.errors.map(e => e.message).join(', ')
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    const { fileName, fileData } = parseResult.data;
     
     console.log(`Processing file: ${fileName}`);
     console.log(`Raw fileData length: ${fileData?.length || 0} characters`);
