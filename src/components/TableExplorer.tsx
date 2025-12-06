@@ -1,13 +1,14 @@
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Download, Copy, Table2, CheckCircle2, Sparkles, Loader2, Grid3X3 } from "lucide-react";
+import { Download, Copy, Table2, CheckCircle2, Sparkles, Loader2, Grid3X3, Maximize2, X } from "lucide-react";
 import { useState } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { DerivedMetrics } from "./DerivedMetrics";
 import { ClassifiedTable, getStatementLabel } from "@/lib/classifyTables";
 import { Badge } from "@/components/ui/badge";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 interface TableExplorerProps {
   tables: any[];
@@ -27,6 +28,7 @@ export const TableExplorer = ({
   const [internalSelectedIndex, setInternalSelectedIndex] = useState(0);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [analysis, setAnalysis] = useState<string | null>(null);
+  const [isMaximized, setIsMaximized] = useState(false);
   const { toast } = useToast();
 
   const selectedTableIndex = externalSelectedIndex !== undefined ? externalSelectedIndex : internalSelectedIndex;
@@ -361,6 +363,14 @@ export const TableExplorer = ({
               )}
               Analyze
             </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-8 text-xs hover:bg-muted"
+              onClick={() => setIsMaximized(true)}
+            >
+              <Maximize2 className="h-3.5 w-3.5" />
+            </Button>
           </div>
         </div>
         <div className="space-y-4">
@@ -428,6 +438,105 @@ export const TableExplorer = ({
           )}
         </ScrollArea>
       </div>
+
+      {/* Fullscreen Table Dialog */}
+      <Dialog open={isMaximized} onOpenChange={setIsMaximized}>
+        <DialogContent className="max-w-[95vw] max-h-[95vh] w-full h-full flex flex-col p-0">
+          <DialogHeader className="p-4 pb-2 border-b border-border/50 flex-shrink-0">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Table2 className="h-5 w-5 text-primary" />
+                <DialogTitle className="text-lg font-semibold">
+                  Table {selectedTableIndex + 1}
+                </DialogTitle>
+                {(() => {
+                  const classified = classifiedTables.find(c => c.originalIndex === selectedTableIndex);
+                  if (classified && classified.type !== 'other') {
+                    return (
+                      <Badge variant="secondary" className="text-xs">
+                        {getStatementLabel(classified.type)}
+                      </Badge>
+                    );
+                  }
+                  return null;
+                })()}
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs hover:bg-muted"
+                  onClick={copyTableToClipboard}
+                >
+                  <Copy className="h-3.5 w-3.5 mr-1.5" />
+                  Copy
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 text-xs hover:bg-muted"
+                  onClick={downloadTableAsCSV}
+                >
+                  <Download className="h-3.5 w-3.5 mr-1.5" />
+                  CSV
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 hover:bg-muted"
+                  onClick={() => setIsMaximized(false)}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          </DialogHeader>
+          <div className="flex-1 overflow-auto p-4">
+            {selectedTable && (() => {
+              const { columns, rows } = getNormalizedData(selectedTable);
+              if (columns.length > 0) {
+                return (
+                  <div className="border border-border/50 rounded-xl overflow-auto h-full bg-muted/20">
+                    <Table className="min-w-max">
+                      <TableHeader>
+                        <TableRow className="border-border/50 hover:bg-transparent">
+                          {columns.map((column: string, idx: number) => (
+                            <TableHead
+                              key={idx}
+                              className="font-semibold bg-muted/50 whitespace-nowrap sticky top-0 text-sm"
+                            >
+                              {sanitizeText(column) || `Column ${idx + 1}`}
+                            </TableHead>
+                          ))}
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {rows.map((row: string[], rowIdx: number) => (
+                          <TableRow key={rowIdx} className="border-border/30 hover:bg-muted/30">
+                            {row.map((cell: string, cellIdx: number) => (
+                              <TableCell
+                                key={cellIdx}
+                                className="text-sm whitespace-nowrap font-mono"
+                              >
+                                {sanitizeText(cell) || "-"}
+                              </TableCell>
+                            ))}
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                );
+              }
+              return (
+                <pre className="text-sm text-foreground bg-muted/30 p-4 rounded-xl whitespace-pre-wrap font-mono h-full overflow-auto">
+                  {JSON.stringify(selectedTable, null, 2)}
+                </pre>
+              );
+            })()}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
