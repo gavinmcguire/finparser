@@ -6,12 +6,12 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Input validation schema
+// Input validation schema - allow nulls since Azure Doc Intelligence can return null cells
 const requestSchema = z.object({
   documentName: z.string().min(1).max(500),
   tableIndex: z.number().int().min(0).max(1000),
-  columns: z.array(z.string().max(1000)).max(100),
-  rows: z.array(z.array(z.string().max(10000))).max(5000),
+  columns: z.array(z.string().max(1000).nullable()).max(100),
+  rows: z.array(z.array(z.string().max(10000).nullable())).max(5000),
 });
 
 serve(async (req) => {
@@ -35,7 +35,11 @@ serve(async (req) => {
       });
     }
     
-    const { documentName, tableIndex, columns, rows } = parseResult.data;
+    const { documentName, tableIndex, columns: rawColumns, rows: rawRows } = parseResult.data;
+    
+    // Sanitize null values to empty strings
+    const columns = rawColumns.map(col => col ?? '');
+    const rows = rawRows.map(row => row.map(cell => cell ?? ''));
     
     console.log(`Analyzing table ${tableIndex} from ${documentName}`);
     console.log(`Table has ${columns?.length || 0} columns and ${rows?.length || 0} rows`);
@@ -48,7 +52,7 @@ serve(async (req) => {
     // Build table representation for the AI
     const tableAsText = [
       `Headers: ${columns.join(' | ')}`,
-      ...rows.map((row: string[], idx: number) => `Row ${idx + 1}: ${row.join(' | ')}`)
+      ...rows.map((row, idx) => `Row ${idx + 1}: ${row.join(' | ')}`)
     ].join('\n');
 
     const systemPrompt = `You are a senior investment banking analyst. Analyze financial tables extracted from SEC filings and provide actionable insights.
