@@ -250,9 +250,9 @@ export const TableExplorer = ({
   }
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-12 gap-4 animate-fade-in">
+    <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 animate-fade-in w-full">
       {/* Table List Sidebar */}
-      <div className="glass-card rounded-2xl p-4 lg:col-span-2">
+      <div className="glass-card rounded-2xl p-4 lg:col-span-3">
         <div className="flex items-center gap-2 mb-4">
           <div className="h-7 w-7 rounded-lg bg-muted flex items-center justify-center">
             <Grid3X3 className="h-3.5 w-3.5 text-muted-foreground" />
@@ -311,7 +311,7 @@ export const TableExplorer = ({
       </div>
 
       {/* Table Detail View */}
-      <div className="glass-card rounded-2xl p-5 lg:col-span-5">
+      <div className="glass-card rounded-2xl p-6 lg:col-span-5">
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-2">
             <h3 className="text-sm font-semibold">
@@ -373,7 +373,7 @@ export const TableExplorer = ({
       </div>
 
       {/* AI Analysis Panel */}
-      <div className="glass-card rounded-2xl p-5 lg:col-span-5">
+      <div className="glass-card rounded-2xl p-6 lg:col-span-4">
         <div className="flex items-center gap-2 mb-4">
           <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-primary/20 to-accent/20 flex items-center justify-center">
             <Sparkles className="h-4 w-4 text-primary" />

@@ -294,8 +294,8 @@ const Index = () => {
       </header>
 
       {/* Main Content */}
-      <main className="container mx-auto px-4 py-6 relative">
-        <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
+      <main className="px-6 py-6 relative max-w-[1920px] mx-auto">
+        <div className="grid grid-cols-1 xl:grid-cols-5 gap-6">
           {/* Left Sidebar - Upload & History */}
           <div className="space-y-6">
             {/* Upload Section */}
@@ -344,7 +344,7 @@ const Index = () => {
           </div>
 
           {/* Main Content Area */}
-          <div className="lg:col-span-3 space-y-6">
+          <div className="xl:col-span-4 space-y-6">
             {response ? (
               <div className="animate-fade-in">
                 {/* AI Financial Snapshot */}
