@@ -16,6 +16,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { classifyAllTables, ClassifiedTable } from "@/lib/classifyTables";
 import { extractFinancialMetrics, FinancialMetrics } from "@/lib/extractFinancialMetrics";
 import { useAuth } from "@/contexts/AuthContext";
+import { usePendingApprovals } from "@/hooks/usePendingApprovals";
 interface DocumentAnalysis {
   id: string;
   file_name: string;
@@ -39,6 +40,7 @@ const Index = () => {
   const { toast } = useToast();
   const { signOut, isAdmin, profile, user } = useAuth();
   const navigate = useNavigate();
+  const pendingCount = usePendingApprovals(isAdmin);
 
   // Load saved documents on mount
   useEffect(() => {
@@ -273,10 +275,15 @@ const Index = () => {
                   variant="outline" 
                   size="sm" 
                   onClick={() => navigate('/admin')}
-                  className="border-border/50 hover:border-primary/50 hover:bg-primary/10"
+                  className="border-border/50 hover:border-primary/50 hover:bg-primary/10 relative"
                 >
                   <Shield className="h-4 w-4 mr-2" />
                   Admin
+                  {pendingCount > 0 && (
+                    <span className="absolute -top-1 -right-1 h-4 w-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold flex items-center justify-center animate-pulse">
+                      {pendingCount > 9 ? '9+' : pendingCount}
+                    </span>
+                  )}
                 </Button>
               )}
               <Button 
