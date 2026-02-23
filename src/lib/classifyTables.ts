@@ -179,11 +179,38 @@ function getColumns(table: any): string[] {
 }
 
 function detectPeriodStrings(table: any): string[] {
-  return getColumns(table).filter(col => {
+  const cols = getColumns(table);
+  const matched = cols.filter(col => {
     const c = (col || '').trim();
     return /\b(20\d{2}|19\d{2})\b/.test(c) || /\b(q[1-4]|fy\s*\d)/i.test(c) ||
       /\b(year|month|ended|as of|december|january|february|march|april|may|june|july|august|september|october|november)\b/i.test(c);
   });
+
+  // If no periods found in columns, check first data row and table title
+  if (matched.length === 0) {
+    const fallbackSources: string[] = [];
+    if (table.title) fallbackSources.push(table.title);
+    const rows: string[][] = table.rows || [];
+    if (rows.length > 0 && rows[0]) {
+      rows[0].forEach((cell: string) => { if (cell) fallbackSources.push(cell); });
+    }
+    // Also check columns for bare year numbers (e.g., "2023", "2024")  
+    cols.forEach(col => {
+      const c = (col || '').trim();
+      if (/^\d{4}$/.test(c) && parseInt(c) >= 1990 && parseInt(c) <= 2030) {
+        matched.push(c);
+      }
+    });
+    // Check fallback sources
+    for (const src of fallbackSources) {
+      const yearMatches = src.match(/\b(20\d{2}|19\d{2})\b/g);
+      if (yearMatches) {
+        yearMatches.forEach(y => { if (!matched.includes(y)) matched.push(y); });
+      }
+    }
+  }
+
+  return matched;
 }
 
 // ─── Gate A: Period validity ────────────────────────────────────
@@ -357,9 +384,15 @@ export function selectPrimaryStatements(classifiedTables: ClassifiedTable[]): {
       const detectedPeriods = detectPeriodStrings(candidate.table);
       const scores = scoreCandidate(candidate);
 
+      // Gate A failure is now a soft penalty (−15) instead of hard rejection
+      if (!passesPeriod) {
+        scores.total -= 15;
+        scores.penaltyScore += 15;
+      }
+
       let rejectionReason: string | null = null;
+      // Only Gate B (signature) is a hard gate
       if (!passesSig) rejectionReason = `Failed Gate B: No signature anchors (need ≥1 of: ${SIGNATURE_ANCHORS[type].slice(0, 3).join(', ')}...)`;
-      else if (!passesPeriod) rejectionReason = `Failed Gate A: Insufficient period columns (found ${detectedPeriods.length}, need ≥2)`;
 
       const cr: CandidateReport = {
         originalIndex: candidate.originalIndex,
@@ -373,12 +406,13 @@ export function selectPrimaryStatements(classifiedTables: ClassifiedTable[]): {
         matchedAnchors: scores.matchedAnchors,
         matchedSignatures: matchedSigs,
         detectedPeriods,
-        rejectionReason,
+        rejectionReason: rejectionReason || (!passesPeriod ? `Soft penalty: period structure weak (${detectedPeriods.length} periods detected)` : null),
         isPrimary: false,
       };
 
       report[key].push(cr);
 
+      // Only hard-reject on Gate B failure
       if (!rejectionReason) {
         eligible.push({ classified: candidate, candidateReport: cr });
       }
