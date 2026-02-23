@@ -8,7 +8,7 @@
  */
 
 import * as XLSX from 'xlsx';
-import { ClassifiedTable } from './classifyTables';
+import { ClassifiedTable, selectPrimaryStatements } from './classifyTables';
 import { normalizeTable, NormalizedStatement } from './normalizeTable';
 import { StatementType } from './canonicalSchema';
 
@@ -92,14 +92,15 @@ export function generateExcelExport({ companyName, fileName, classifiedTables }:
   const wb = XLSX.utils.book_new();
   let sheetsAdded = 0;
 
-  const statementTypes: { type: StatementType; finType: string }[] = [
-    { type: 'income_statement', finType: 'income_statement' },
-    { type: 'balance_sheet', finType: 'balance_sheet' },
-    { type: 'cash_flow', finType: 'cash_flow' },
+  const primary = selectPrimaryStatements(classifiedTables);
+
+  const statementEntries: { type: StatementType; table: ClassifiedTable | null }[] = [
+    { type: 'income_statement', table: primary.incomeStatement },
+    { type: 'balance_sheet', table: primary.balanceSheet },
+    { type: 'cash_flow', table: primary.cashFlow },
   ];
 
-  for (const { type, finType } of statementTypes) {
-    const classified = classifiedTables.find(t => t.type === finType);
+  for (const { type, table: classified } of statementEntries) {
     if (!classified) continue;
 
     const normalized = normalizeTable(classified.table, type);

@@ -1,4 +1,4 @@
-import { ClassifiedTable } from './classifyTables';
+import { ClassifiedTable, selectPrimaryStatements } from './classifyTables';
 
 export interface FinancialMetrics {
   companyName: string;
@@ -240,10 +240,11 @@ export function extractFinancialMetrics(
     netCash: null,
   };
   
-  // Find classified statements
-  const incomeStatement = classifiedTables.find(t => t.type === 'income_statement');
-  const cashFlowStatement = classifiedTables.find(t => t.type === 'cash_flow');
-  const balanceSheet = classifiedTables.find(t => t.type === 'balance_sheet');
+  // Select best table for each statement type
+  const primary = selectPrimaryStatements(classifiedTables);
+  const incomeStatement = primary.incomeStatement;
+  const cashFlowStatement = primary.cashFlow;
+  const balanceSheet = primary.balanceSheet;
   
   // Extract from income statement
   if (incomeStatement) {
