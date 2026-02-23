@@ -28,8 +28,8 @@ export function ProtectedRoute({ children, requireAdmin = false }: ProtectedRout
     return <Navigate to="/" replace />;
   }
 
-  // Check if user is approved (admins bypass this)
-  if (!isAdmin && !isApproved) {
+  // Check if user has been kicked (rejected) - admins bypass this
+  if (!isAdmin && profile?.status === 'rejected') {
     return <Navigate to="/auth" replace />;
   }
 

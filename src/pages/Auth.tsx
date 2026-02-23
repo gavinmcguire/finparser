@@ -31,9 +31,9 @@ export default function Auth() {
   const { toast } = useToast();
   const { signIn, signUp, isApproved, isAdmin, user, profile } = useAuth();
 
-  // Redirect if already logged in and approved
+  // Redirect if already logged in and not kicked
   if (user && profile) {
-    if (isApproved || isAdmin) {
+    if (profile.status !== 'rejected') {
       navigate('/');
       return null;
     }
@@ -74,8 +74,8 @@ export default function Auth() {
           }
         } else {
           toast({
-            title: 'Account created',
-            description: 'Your account is pending approval. You will be notified when approved.',
+            title: 'Account created!',
+            description: 'Please check your email to verify your account.',
           });
           setIsSignUp(false);
         }
@@ -161,14 +161,6 @@ export default function Auth() {
           </div>
 
           {/* Status Messages */}
-          {user && profile && profile.status === 'pending' && (
-            <div className="mb-6 p-4 bg-warning/10 border border-warning/20 rounded-xl animate-fade-in">
-              <p className="text-sm text-warning">
-                Your account is pending approval. Please wait for an administrator to approve your access.
-              </p>
-            </div>
-          )}
-
           {user && profile && profile.status === 'rejected' && (
             <div className="mb-6 p-4 bg-destructive/10 border border-destructive/20 rounded-xl animate-fade-in">
               <p className="text-sm text-destructive">
