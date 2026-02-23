@@ -241,10 +241,7 @@ export function extractFinancialMetrics(
   };
   
   // Select best table for each statement type
-  const primary = selectPrimaryStatements(classifiedTables);
-  const incomeStatement = primary.incomeStatement;
-  const cashFlowStatement = primary.cashFlow;
-  const balanceSheet = primary.balanceSheet;
+  const { incomeStatement, cashFlow: cashFlowStatement, balanceSheet } = selectPrimaryStatements(classifiedTables);
   
   // Extract from income statement
   if (incomeStatement) {

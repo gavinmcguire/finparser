@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Loader2, LogOut, Shield, Sparkles, FileText, ChevronRight, GitCompare, FileSpreadsheet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
-import { classifyAllTables, ClassifiedTable } from "@/lib/classifyTables";
+import { classifyAllTables, ClassifiedTable, FinancialStatementType } from "@/lib/classifyTables";
 import { extractFinancialMetrics, FinancialMetrics } from "@/lib/extractFinancialMetrics";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
@@ -38,6 +38,7 @@ const Index = () => {
   const [selectedTableIndex, setSelectedTableIndex] = useState(0);
   const [classifiedTables, setClassifiedTables] = useState<ClassifiedTable[]>([]);
   const [showComparison, setShowComparison] = useState(false);
+  const [statementOverrides, setStatementOverrides] = useState<Record<string, ClassifiedTable>>({});
   const { toast } = useToast();
   const { signOut, isAdmin, profile, user } = useAuth();
   const navigate = useNavigate();
@@ -362,10 +363,15 @@ const Index = () => {
                     {classifiedTables.some(t => t.type !== 'other') && (
                       <Button
                         onClick={() => {
+                          const overrides: any = {};
+                          if (statementOverrides.income_statement) overrides.incomeStatement = statementOverrides.income_statement;
+                          if (statementOverrides.balance_sheet) overrides.balanceSheet = statementOverrides.balance_sheet;
+                          if (statementOverrides.cash_flow) overrides.cashFlow = statementOverrides.cash_flow;
                           const success = generateExcelExport({
                             companyName: financialMetrics.companyName,
                             fileName: response.fileName || 'Document',
                             classifiedTables,
+                            overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
                           });
                           toast({
                             title: success ? 'Excel exported!' : 'Export failed',
@@ -419,6 +425,9 @@ const Index = () => {
                       classifiedTables={classifiedTables}
                       onSelectTable={setSelectedTableIndex}
                       selectedIndex={selectedTableIndex}
+                      onOverride={(type: FinancialStatementType, table: ClassifiedTable) => {
+                        setStatementOverrides(prev => ({ ...prev, [type]: table }));
+                      }}
                     />
                   </div>
                 )}
