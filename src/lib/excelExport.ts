@@ -16,6 +16,11 @@ interface ExportOptions {
   companyName: string;
   fileName: string;
   classifiedTables: ClassifiedTable[];
+  overrides?: {
+    incomeStatement?: ClassifiedTable | null;
+    balanceSheet?: ClassifiedTable | null;
+    cashFlow?: ClassifiedTable | null;
+  };
 }
 
 function buildSheetData(statement: NormalizedStatement, companyName: string): any[][] {
@@ -88,16 +93,16 @@ function applyStyles(ws: XLSX.WorkSheet, data: any[][], statement: NormalizedSta
   }
 }
 
-export function generateExcelExport({ companyName, fileName, classifiedTables }: ExportOptions): boolean {
+export function generateExcelExport({ companyName, fileName, classifiedTables, overrides }: ExportOptions): boolean {
   const wb = XLSX.utils.book_new();
   let sheetsAdded = 0;
 
   const primary = selectPrimaryStatements(classifiedTables);
 
   const statementEntries: { type: StatementType; table: ClassifiedTable | null }[] = [
-    { type: 'income_statement', table: primary.incomeStatement },
-    { type: 'balance_sheet', table: primary.balanceSheet },
-    { type: 'cash_flow', table: primary.cashFlow },
+    { type: 'income_statement', table: overrides?.incomeStatement !== undefined ? overrides.incomeStatement : primary.incomeStatement },
+    { type: 'balance_sheet', table: overrides?.balanceSheet !== undefined ? overrides.balanceSheet : primary.balanceSheet },
+    { type: 'cash_flow', table: overrides?.cashFlow !== undefined ? overrides.cashFlow : primary.cashFlow },
   ];
 
   for (const { type, table: classified } of statementEntries) {
