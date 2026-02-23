@@ -10,13 +10,14 @@ import { KeyRatiosCard } from "@/components/KeyRatiosCard";
 import { CompanyComparison } from "@/components/CompanyComparison";
 import { InterviewPrepMode } from "@/components/InterviewPrepMode";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogOut, Shield, Sparkles, FileText, ChevronRight, GitCompare } from "lucide-react";
+import { Loader2, LogOut, Shield, Sparkles, FileText, ChevronRight, GitCompare, FileSpreadsheet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { classifyAllTables, ClassifiedTable } from "@/lib/classifyTables";
 import { extractFinancialMetrics, FinancialMetrics } from "@/lib/extractFinancialMetrics";
 import { useAuth } from "@/contexts/AuthContext";
 import { usePendingApprovals } from "@/hooks/usePendingApprovals";
+import { generateExcelExport } from "@/lib/excelExport";
 interface DocumentAnalysis {
   id: string;
   file_name: string;
@@ -354,10 +355,32 @@ const Index = () => {
           <div className="xl:col-span-4 space-y-6">
             {response ? (
               <div className="animate-fade-in">
-                {/* AI Financial Snapshot */}
+                {/* AI Financial Snapshot + Excel Export */}
                 {financialMetrics && (
-                  <div className="mb-6">
+                  <div className="mb-6 space-y-4">
                     <FinancialSnapshot metrics={financialMetrics} />
+                    {classifiedTables.some(t => t.type !== 'other') && (
+                      <Button
+                        onClick={() => {
+                          const success = generateExcelExport({
+                            companyName: financialMetrics.companyName,
+                            fileName: response.fileName || 'Document',
+                            classifiedTables,
+                          });
+                          toast({
+                            title: success ? 'Excel exported!' : 'Export failed',
+                            description: success
+                              ? 'Analyst-ready 3-statement model downloaded'
+                              : 'No financial statements could be normalized. Try a different document.',
+                            variant: success ? 'default' : 'destructive',
+                          });
+                        }}
+                        className="w-full h-12 bg-gradient-to-r from-primary to-primary/80 hover:from-primary/90 hover:to-primary/70 font-semibold text-sm glow-primary"
+                      >
+                        <FileSpreadsheet className="h-5 w-5 mr-2" />
+                        Export 3-Statement Model (.xlsx)
+                      </Button>
+                    )}
                   </div>
                 )}
 
