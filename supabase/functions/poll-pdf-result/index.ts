@@ -372,16 +372,46 @@ serve(async (req) => {
         
         const incomeStatement: any = {};
         if (bestTable) {
+          // Detect which column has the most recent year
+          // 10-Ks often put most recent year LEFTMOST (e.g., 2025 | 2024 | 2023)
           let latestCol = -1;
-          for (const row of bestTable.rows) {
-            const label = (row[0] || "").toLowerCase();
-            if (label.includes("total net revenue") || label.includes("revenue") || label.includes("net sales")) {
-              for (let i = row.length - 1; i >= 1; i--) {
-                if (parseIncomeStatementNumber(row[i]) !== undefined) { latestCol = i; break; }
+          
+          // Check column headers for year ordering
+          const cols = bestTable.columns || [];
+          let maxYear = 0;
+          for (let i = 1; i < cols.length; i++) {
+            const yearMatch = (cols[i] || "").match(/\b(20\d{2})\b/);
+            if (yearMatch) {
+              const year = parseInt(yearMatch[1]);
+              if (year > maxYear) {
+                maxYear = year;
+                latestCol = i;
               }
-              break;
             }
           }
+          
+          // If no year found in columns, check if first column header has years
+          if (latestCol === -1 && cols[0]) {
+            const headerYears = (cols[0] || "").match(/\b(20\d{2})\b/g);
+            if (headerYears && headerYears.length > 0) {
+              // First year in header is usually most recent; data starts at col 1
+              latestCol = 1;
+            }
+          }
+          
+          // Fallback: pick first numeric column from revenue row (leftmost = most recent in 10-K convention)
+          if (latestCol === -1) {
+            for (const row of bestTable.rows) {
+              const label = (row[0] || "").toLowerCase();
+              if (label.includes("total net revenue") || label.includes("revenue") || label.includes("net sales")) {
+                for (let i = 1; i < row.length; i++) {
+                  if (parseIncomeStatementNumber(row[i]) !== undefined) { latestCol = i; break; }
+                }
+                break;
+              }
+            }
+          }
+          
           if (latestCol >= 1) {
             for (const row of bestTable.rows) {
               const label = (row[0] || "").toLowerCase();
