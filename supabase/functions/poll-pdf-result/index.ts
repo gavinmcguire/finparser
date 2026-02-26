@@ -331,33 +331,62 @@ serve(async (req) => {
         console.error('Error parsing equity summary:', e);
       }
 
-      // Extract income statement
+      // Extract income statement — find the BEST table, not just the first match
       try {
-        const incomeStatement: any = {};
+        const SEGMENT_PENALTY_WORDS = ['segment', 'north america', 'emea', 'asia', 'by region', 'by country', 'consumer', 'corporate', 'commercial', 'investment bank', 'asset management', 'wealth management'];
+        
+        let bestTable: any = null;
+        let bestScore = -Infinity;
+        
         for (const table of tables) {
           let hasRevenue = false, hasNetIncome = false;
+          let rowCount = table.rows?.length || 0;
           for (const row of table.rows) {
             const label = (row[0] || "").toLowerCase();
             if (label.includes("revenue") || label.includes("total revenues") || label.includes("net sales") || label.includes("total net sales") || label.includes("total net revenue") || label.includes("net interest income")) hasRevenue = true;
             if (label.includes("net income") || label.includes("net earnings")) hasNetIncome = true;
           }
-          if (hasRevenue && hasNetIncome) {
-            let latestCol = -1;
-            for (const row of table.rows) {
-              const label = (row[0] || "").toLowerCase();
-              if (label.includes("total net revenue") || label.includes("revenue") || label.includes("net sales")) {
-                for (let i = row.length - 1; i >= 1; i--) {
-                  if (parseIncomeStatementNumber(row[i]) !== undefined) { latestCol = i; break; }
-                }
-                break;
+          if (!hasRevenue || !hasNetIncome) continue;
+          
+          // Score this table
+          let score = rowCount; // Larger tables (consolidated) score higher
+          
+          // Bonus for having "total net revenue" row (consolidated banking IS)
+          const tableText = table.rows.map((r: string[]) => (r[0] || "").toLowerCase()).join(" ");
+          if (tableText.includes("total net revenue")) score += 50;
+          if (tableText.includes("income before income tax")) score += 20;
+          if (tableText.includes("provision for credit losses")) score += 20;
+          if (tableText.includes("earnings per share") || tableText.includes("diluted")) score += 30;
+          if (tableText.includes("cost of sales") || tableText.includes("cost of goods") || tableText.includes("gross profit")) score += 20;
+          
+          // Penalize segment/subsidiary tables
+          for (const penalty of SEGMENT_PENALTY_WORDS) {
+            if (tableText.includes(penalty)) score -= 30;
+          }
+          
+          if (score > bestScore) {
+            bestScore = score;
+            bestTable = table;
+          }
+        }
+        
+        const incomeStatement: any = {};
+        if (bestTable) {
+          let latestCol = -1;
+          for (const row of bestTable.rows) {
+            const label = (row[0] || "").toLowerCase();
+            if (label.includes("total net revenue") || label.includes("revenue") || label.includes("net sales")) {
+              for (let i = row.length - 1; i >= 1; i--) {
+                if (parseIncomeStatementNumber(row[i]) !== undefined) { latestCol = i; break; }
               }
+              break;
             }
-            if (latestCol === -1) break;
-            for (const row of table.rows) {
+          }
+          if (latestCol >= 1) {
+            for (const row of bestTable.rows) {
               const label = (row[0] || "").toLowerCase();
               const value = parseIncomeStatementNumber(row[latestCol]);
               if (value === undefined) continue;
-              // Banking: prefer "total net revenue" over partial "noninterest revenue"
               if (label.includes("total net revenue")) { incomeStatement.revenue = value; }
               else if ((label.includes("revenue") || label.includes("net sales")) && !label.includes("cost") && !label.includes("noninterest")) incomeStatement.revenue = incomeStatement.revenue || value;
               if (label.includes("cost of sales") || label.includes("cost of goods")) incomeStatement.costOfSales = value;
@@ -366,7 +395,6 @@ serve(async (req) => {
               if ((label.includes("operating income") || label.includes("income from operations") || label.includes("income before income tax")) && !label.includes("non-operating")) incomeStatement.operatingIncome = incomeStatement.operatingIncome || value;
               if ((label.includes("net income") || label.includes("net earnings")) && !label.includes("noncontrolling") && !label.includes("non-controlling")) incomeStatement.netIncome = incomeStatement.netIncome || value;
             }
-            break;
           }
         }
         if (Object.keys(incomeStatement).length > 0) {
