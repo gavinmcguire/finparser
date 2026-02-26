@@ -62,13 +62,13 @@ serve(async (req) => {
     console.log(`PDF base64 length: ${pdfBase64.length}, estimated size: ~${Math.round(pdfBase64.length * 0.75 / 1024 / 1024 * 100) / 100} MB`);
 
     // Submit to Azure (non-blocking)
-    // For massive filings (600+ pages), limit to first 250 pages to prevent OOM in poll-pdf-result
-    // Financial statements are always in Part II (first ~100-150 pages) of any 10-K
+    // For massive filings (500+ pages), limit to first 400 pages to prevent OOM in poll-pdf-result
+    // Core financials are in first ~150 pages, notes extend to ~300, beyond 400 is exhibits/XBRL/legal
     const pdfBytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0));
     // Rough page estimate: average SEC filing page ≈ 5-8KB of PDF data
     const estimatedPages = Math.round(pdfBytes.length / 6000);
-    const pageLimit = estimatedPages > 300 ? '&pages=1-250' : '';
-    console.log(`Estimated pages: ${estimatedPages}${pageLimit ? ', capping at 250' : ', processing all'}`);
+    const pageLimit = estimatedPages > 400 ? '&pages=1-400' : '';
+    console.log(`Estimated pages: ${estimatedPages}${pageLimit ? ', capping at 400' : ', processing all'}`);
     
     const analyzeUrl = `${docIntelEndpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31${pageLimit}`;
     const analyzeResponse = await fetch(analyzeUrl, {
