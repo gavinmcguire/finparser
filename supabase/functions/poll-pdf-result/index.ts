@@ -208,8 +208,6 @@ serve(async (req) => {
 
     // ─── Process completed results ─────────────────────────────
     const result = resultData.analyzeResult;
-    const pageCount = result.pages?.length || 0;
-    const rawTableCount = result.tables?.length || 0;
     
     // Run unit detection on full text BEFORE truncating (financial headers may be deep in doc)
     const fullText = result.content || "";
