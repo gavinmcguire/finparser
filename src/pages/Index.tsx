@@ -59,11 +59,16 @@ const Index = () => {
     }
   }, [response?.tables]);
 
+  // Get the unit multiplier from the response
+  const unitMultiplier = useMemo(() => {
+    return response?.reportedUnit?.multiplier || 1;
+  }, [response?.reportedUnit]);
+
   // Compute financial metrics from classified tables
   const financialMetrics = useMemo<FinancialMetrics | null>(() => {
     if (classifiedTables.length === 0 || !response?.fileName) return null;
-    return extractFinancialMetrics(classifiedTables, response.fileName);
-  }, [classifiedTables, response?.fileName]);
+    return extractFinancialMetrics(classifiedTables, response.fileName, unitMultiplier);
+  }, [classifiedTables, response?.fileName, unitMultiplier]);
 
   const loadSavedDocuments = async () => {
     try {
@@ -89,7 +94,7 @@ const Index = () => {
         pdf_text: data.pdfText || null,
         tables: data.tables || null,
         equity_summary: data.equitySummary || null,
-        financials: data.financials || null,
+        financials: { ...(data.financials || {}), reportedUnit: data.reportedUnit || null },
         summary: data.summary || null,
         user_id: user.id,
       });
@@ -142,6 +147,7 @@ const Index = () => {
       tablesCount: doc.tables?.length || 0,
       equitySummary: doc.equity_summary,
       financials: doc.financials,
+      reportedUnit: doc.financials?.reportedUnit || null,
       summary: doc.summary,
     });
   };
@@ -372,6 +378,7 @@ const Index = () => {
                             fileName: response.fileName || 'Document',
                             classifiedTables,
                             overrides: Object.keys(overrides).length > 0 ? overrides : undefined,
+                            unitMultiplier,
                           });
                           toast({
                             title: success ? 'Excel exported!' : 'Export failed',

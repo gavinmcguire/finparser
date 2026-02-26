@@ -92,7 +92,8 @@ export const CompanyComparison = ({ documents, isOpen, onClose }: CompanyCompari
     return selectedDocuments.map(doc => {
       const tables = doc.tables || [];
       const classified = classifyAllTables(tables);
-      return extractFinancialMetrics(classified, doc.file_name);
+      const multiplier = (doc as any).financials?.reportedUnit?.multiplier || 1;
+      return extractFinancialMetrics(classified, doc.file_name, multiplier);
     });
   }, [selectedDocuments]);
 
