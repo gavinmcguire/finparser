@@ -209,12 +209,13 @@ serve(async (req) => {
     // ─── Process completed results ─────────────────────────────
     const result = resultData.analyzeResult;
     
-    // Run unit detection on full text BEFORE truncating (financial headers may be deep in doc)
+    // Run unit detection on first 20k chars only (financial headers are near top)
     const fullText = result.content || "";
-    const reportedUnit = detectReportedUnit(fullText);
-    // Now truncate for storage/response
-    const pdfText = fullText.slice(0, 80_000);
-    result.content = null; // Free full text
+    const detectText = fullText.slice(0, 20_000);
+    const reportedUnit = detectReportedUnit(detectText);
+    // Truncate for storage/response
+    const pdfText = fullText.slice(0, 50_000);
+    result.content = null; // Free full text immediately
     
     const pageCount = result.pages?.length || 0;
     const rawTableCount = result.tables?.length || 0;
@@ -222,8 +223,8 @@ serve(async (req) => {
     console.log(`Azure complete: ${pageCount} pages, ${rawTableCount} tables`);
     console.log(`Detected unit: ${reportedUnit.unit}`);
 
-    // Cap at 200 tables max — financial statements are always in first ~50
-    const maxTables = Math.min(rawTableCount, 200);
+    // Cap at 80 tables max — financial statements are always in first ~50
+    const maxTables = Math.min(rawTableCount, 80);
     const rawTables = result.tables || [];
     // Free pages/paragraphs/styles we don't use
     result.pages = null;
@@ -435,30 +436,36 @@ serve(async (req) => {
       }
     }
 
-    // AI summary
+    // AI summary — skip for large docs to conserve memory
     let aiSummary = null;
-    try {
-      const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
-      const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${lovableApiKey}`,
-        },
-        body: JSON.stringify({
-          model: "google/gemini-2.5-flash",
-          messages: [
-            { role: "system", content: "You summarize financial documents. Provide a brief, clear summary highlighting key financial information." },
-            { role: "user", content: `Summarize this financial document in 2-3 sentences:\n\n${pdfText.slice(0, 8000)}` }
-          ]
-        }),
-      });
-      if (aiResponse.ok) {
-        const data = await aiResponse.json();
-        aiSummary = data.choices?.[0]?.message?.content || null;
+    if (tables.length <= 60) {
+      try {
+        const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
+        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Authorization": `Bearer ${lovableApiKey}`,
+          },
+          body: JSON.stringify({
+            model: "google/gemini-2.5-flash",
+            messages: [
+              { role: "system", content: "You summarize financial documents. Provide a brief, clear summary highlighting key financial information." },
+              { role: "user", content: `Summarize this financial document in 2-3 sentences:\n\n${pdfText.slice(0, 6000)}` }
+            ]
+          }),
+        });
+        if (aiResponse.ok) {
+          const data = await aiResponse.json();
+          aiSummary = data.choices?.[0]?.message?.content || null;
+        } else {
+          await aiResponse.text(); // consume body
+        }
+      } catch (e) {
+        console.log('AI summary failed (non-critical):', e);
       }
-    } catch (e) {
-      console.log('AI summary failed (non-critical):', e);
+    } else {
+      console.log(`Skipping AI summary for large doc (${tables.length} tables) to conserve memory`);
     }
 
     // Update DB record with results
@@ -486,7 +493,7 @@ serve(async (req) => {
       status: 'completed',
       data: {
         fileName: doc.file_name,
-        pdfText: pdfText.slice(0, 50_000), // Only send first 50k to client
+        pdfText: pdfText.slice(0, 30_000), // Only send first 30k to client
         pdfTextPreview: pdfText.slice(0, 500),
         tables,
         tablesCount: tables.length,
