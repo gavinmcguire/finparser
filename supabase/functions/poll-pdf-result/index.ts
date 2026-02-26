@@ -207,15 +207,17 @@ serve(async (req) => {
     }
 
     // ─── Process completed results ─────────────────────────────
+    // CRITICAL: Extract only what we need immediately, then free the massive Azure response
     const result = resultData.analyzeResult;
+    // Free the outer wrapper immediately
+    resultData.analyzeResult = null;
     
-    // Run unit detection on first 20k chars only (financial headers are near top)
-    const fullText = result.content || "";
-    const detectText = fullText.slice(0, 20_000);
+    // Extract text — only keep first 30k chars
+    const rawContent = result.content || "";
+    const detectText = rawContent.slice(0, 20_000);
     const reportedUnit = detectReportedUnit(detectText);
-    // Truncate for storage/response
-    const pdfText = fullText.slice(0, 50_000);
-    result.content = null; // Free full text immediately
+    const pdfText = rawContent.slice(0, 30_000);
+    result.content = null; // Free immediately
     
     const pageCount = result.pages?.length || 0;
     const rawTableCount = result.tables?.length || 0;
@@ -223,14 +225,18 @@ serve(async (req) => {
     console.log(`Azure complete: ${pageCount} pages, ${rawTableCount} tables`);
     console.log(`Detected unit: ${reportedUnit.unit}`);
 
-    // Cap at 80 tables max — financial statements are always in first ~50
-    const maxTables = Math.min(rawTableCount, 80);
-    const rawTables = result.tables || [];
-    // Free pages/paragraphs/styles we don't use
+    // Free everything we don't need BEFORE processing tables
     result.pages = null;
     result.paragraphs = null;
     result.styles = null;
     result.keyValuePairs = null;
+    result.documents = null;
+    result.languages = null;
+    
+    // Cap at 50 tables — financial statements are in first 20-30
+    const maxTables = Math.min(rawTableCount, 50);
+    const rawTables = result.tables || [];
+    result.tables = null; // Detach from result object
     
     const tables: any[] = [];
     for (let index = 0; index < maxTables; index++) {
@@ -240,7 +246,7 @@ serve(async (req) => {
       const columns: string[] = [];
       const rows: string[][] = [];
       
-      // Build row map in single pass (avoids O(cells*rows) nested loop)
+      // Build row map in single pass
       const rowMap = new Map<number, Map<number, string>>();
       for (const cell of table.cells) {
         const content = (cell.content ?? '').toString();
@@ -252,7 +258,6 @@ serve(async (req) => {
         }
       }
       
-      // Convert map to arrays
       const maxRow = table.rowCount - 1;
       for (let rowIdx = 1; rowIdx <= maxRow; rowIdx++) {
         const rowData: string[] = [];
@@ -273,11 +278,13 @@ serve(async (req) => {
         columnCount: table.columnCount
       });
       
-      // Release raw table
+      // Release raw table immediately
       rawTables[index] = null;
     }
-    // Free remaining raw tables
-    result.tables = null;
+    // Free ALL remaining raw tables (indices 50+)
+    for (let i = maxTables; i < rawTables.length; i++) {
+      rawTables[i] = null;
+    }
     resultData.analyzeResult = null;
 
     // Extract equity summary
@@ -436,37 +443,9 @@ serve(async (req) => {
       }
     }
 
-    // AI summary — skip for large docs to conserve memory
-    let aiSummary = null;
-    if (tables.length <= 60) {
-      try {
-        const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
-        const aiResponse = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${lovableApiKey}`,
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              { role: "system", content: "You summarize financial documents. Provide a brief, clear summary highlighting key financial information." },
-              { role: "user", content: `Summarize this financial document in 2-3 sentences:\n\n${pdfText.slice(0, 6000)}` }
-            ]
-          }),
-        });
-        if (aiResponse.ok) {
-          const data = await aiResponse.json();
-          aiSummary = data.choices?.[0]?.message?.content || null;
-        } else {
-          await aiResponse.text(); // consume body
-        }
-      } catch (e) {
-        console.log('AI summary failed (non-critical):', e);
-      }
-    } else {
-      console.log(`Skipping AI summary for large doc (${tables.length} tables) to conserve memory`);
-    }
+    // AI summary — skip to conserve memory; generate client-side if needed
+    const aiSummary = null;
+    console.log(`Skipping AI summary to conserve memory (${tables.length} tables, ${pageCount} pages)`);
 
     // Update DB record with results
     const financialsWithUnit = { ...(financials || {}), reportedUnit };
