@@ -211,11 +211,15 @@ serve(async (req) => {
     const pageCount = result.pages?.length || 0;
     const rawTableCount = result.tables?.length || 0;
     
-    // Truncate text immediately — don't hold full 410-page text in memory
-    const pdfText = (result.content || "").slice(0, 80_000);
+    // Run unit detection on full text BEFORE truncating (financial headers may be deep in doc)
+    const fullText = result.content || "";
+    const reportedUnit = detectReportedUnit(fullText);
+    // Now truncate for storage/response
+    const pdfText = fullText.slice(0, 80_000);
     result.content = null; // Free full text
     
-    const reportedUnit = detectReportedUnit(pdfText);
+    const pageCount = result.pages?.length || 0;
+    const rawTableCount = result.tables?.length || 0;
     
     console.log(`Azure complete: ${pageCount} pages, ${rawTableCount} tables`);
     console.log(`Detected unit: ${reportedUnit.unit}`);
