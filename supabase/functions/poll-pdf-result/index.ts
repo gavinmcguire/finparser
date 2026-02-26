@@ -338,14 +338,14 @@ serve(async (req) => {
           let hasRevenue = false, hasNetIncome = false;
           for (const row of table.rows) {
             const label = (row[0] || "").toLowerCase();
-            if (label.includes("revenue") || label.includes("total revenues") || label.includes("net sales") || label.includes("total net sales")) hasRevenue = true;
+            if (label.includes("revenue") || label.includes("total revenues") || label.includes("net sales") || label.includes("total net sales") || label.includes("total net revenue") || label.includes("net interest income")) hasRevenue = true;
             if (label.includes("net income") || label.includes("net earnings")) hasNetIncome = true;
           }
           if (hasRevenue && hasNetIncome) {
             let latestCol = -1;
             for (const row of table.rows) {
               const label = (row[0] || "").toLowerCase();
-              if (label.includes("revenue") || label.includes("net sales")) {
+              if (label.includes("total net revenue") || label.includes("revenue") || label.includes("net sales")) {
                 for (let i = row.length - 1; i >= 1; i--) {
                   if (parseIncomeStatementNumber(row[i]) !== undefined) { latestCol = i; break; }
                 }
@@ -357,10 +357,13 @@ serve(async (req) => {
               const label = (row[0] || "").toLowerCase();
               const value = parseIncomeStatementNumber(row[latestCol]);
               if (value === undefined) continue;
-              if ((label.includes("revenue") || label.includes("net sales")) && !label.includes("cost")) incomeStatement.revenue = incomeStatement.revenue || value;
+              // Banking: prefer "total net revenue" over partial "noninterest revenue"
+              if (label.includes("total net revenue")) { incomeStatement.revenue = value; }
+              else if ((label.includes("revenue") || label.includes("net sales")) && !label.includes("cost") && !label.includes("noninterest")) incomeStatement.revenue = incomeStatement.revenue || value;
               if (label.includes("cost of sales") || label.includes("cost of goods")) incomeStatement.costOfSales = value;
               if (label.includes("gross profit") || label.includes("gross margin")) incomeStatement.grossProfit = value;
-              if ((label.includes("operating income") || label.includes("income from operations")) && !label.includes("non-operating")) incomeStatement.operatingIncome = value;
+              if (label.includes("provision for credit losses")) incomeStatement.provisionForCreditLosses = value;
+              if ((label.includes("operating income") || label.includes("income from operations") || label.includes("income before income tax")) && !label.includes("non-operating")) incomeStatement.operatingIncome = incomeStatement.operatingIncome || value;
               if ((label.includes("net income") || label.includes("net earnings")) && !label.includes("noncontrolling") && !label.includes("non-controlling")) incomeStatement.netIncome = incomeStatement.netIncome || value;
             }
             break;
