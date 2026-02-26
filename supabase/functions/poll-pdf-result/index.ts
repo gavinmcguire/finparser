@@ -14,17 +14,59 @@ const requestSchema = z.object({
 
 // ─── Unit Detection ─────────────────────────────────────────────
 function detectReportedUnit(text: string): { unit: string; multiplier: number } {
-  const patterns = [
-    { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+billions\b/i, unit: 'billions', multiplier: 1_000_000_000 },
-    { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+millions\b/i, unit: 'millions', multiplier: 1_000_000 },
-    { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+thousands\b/i, unit: 'thousands', multiplier: 1_000 },
-    { regex: /\(\s*in\s+billions/i, unit: 'billions', multiplier: 1_000_000_000 },
-    { regex: /\(\s*in\s+millions/i, unit: 'millions', multiplier: 1_000_000 },
-    { regex: /\(\s*in\s+thousands/i, unit: 'thousands', multiplier: 1_000 },
+  // Only search near financial statement headers, not the full document
+  // This prevents false positives from narrative text like "over $4 billion in..."
+  const statementHeaders = [
+    /consolidated\s+statements?\s+of\s+(?:operations|income|earnings)/i,
+    /consolidated\s+balance\s+sheets?/i,
+    /consolidated\s+statements?\s+of\s+cash\s+flows?/i,
+    /consolidated\s+statements?\s+of\s+(?:financial|comprehensive)/i,
   ];
-  for (const { regex, unit, multiplier } of patterns) {
-    if (regex.test(text)) return { unit, multiplier };
+
+  // Extract ~500 chars around each financial statement header
+  const searchRegions: string[] = [];
+  for (const header of statementHeaders) {
+    const match = header.exec(text);
+    if (match && match.index !== undefined) {
+      const start = Math.max(0, match.index - 200);
+      const end = Math.min(text.length, match.index + match[0].length + 300);
+      searchRegions.push(text.slice(start, end));
+    }
   }
+
+  // Also check the first 2000 chars (cover pages sometimes have disclaimers)
+  searchRegions.push(text.slice(0, 2000));
+
+  const searchText = searchRegions.join(' ');
+
+  // Order matters: check thousands first (most specific match wins by context)
+  const patterns = [
+    { regex: /\(\s*in\s+thousands/i, unit: 'thousands', multiplier: 1_000 },
+    { regex: /\(\s*in\s+millions/i, unit: 'millions', multiplier: 1_000_000 },
+    { regex: /\(\s*in\s+billions/i, unit: 'billions', multiplier: 1_000_000_000 },
+    { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+thousands\b/i, unit: 'thousands', multiplier: 1_000 },
+    { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+millions\b/i, unit: 'millions', multiplier: 1_000_000 },
+    { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+billions\b/i, unit: 'billions', multiplier: 1_000_000_000 },
+  ];
+
+  // Count matches — if "millions" appears more than "billions", use millions
+  const counts: Record<string, number> = { thousands: 0, millions: 0, billions: 0 };
+  for (const { regex, unit } of patterns) {
+    const matches = searchText.match(new RegExp(regex.source, 'gi'));
+    if (matches) counts[unit] += matches.length;
+  }
+
+  // Pick the unit with the most matches near financial headers
+  if (counts.thousands > 0 && counts.thousands >= counts.millions && counts.thousands >= counts.billions) {
+    return { unit: 'thousands', multiplier: 1_000 };
+  }
+  if (counts.millions > 0 && counts.millions >= counts.billions) {
+    return { unit: 'millions', multiplier: 1_000_000 };
+  }
+  if (counts.billions > 0) {
+    return { unit: 'billions', multiplier: 1_000_000_000 };
+  }
+
   return { unit: 'units', multiplier: 1 };
 }
 
