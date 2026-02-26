@@ -16,34 +16,43 @@ export type Database = {
     Tables: {
       document_analyses: {
         Row: {
+          azure_operation_url: string | null
           created_at: string
           equity_summary: Json | null
+          error_message: string | null
           file_name: string
           financials: Json | null
           id: string
           pdf_text: string | null
+          processing_status: string
           summary: string | null
           tables: Json | null
           user_id: string
         }
         Insert: {
+          azure_operation_url?: string | null
           created_at?: string
           equity_summary?: Json | null
+          error_message?: string | null
           file_name: string
           financials?: Json | null
           id?: string
           pdf_text?: string | null
+          processing_status?: string
           summary?: string | null
           tables?: Json | null
           user_id: string
         }
         Update: {
+          azure_operation_url?: string | null
           created_at?: string
           equity_summary?: Json | null
+          error_message?: string | null
           file_name?: string
           financials?: Json | null
           id?: string
           pdf_text?: string | null
+          processing_status?: string
           summary?: string | null
           tables?: Json | null
           user_id?: string
