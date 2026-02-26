@@ -211,38 +211,52 @@ serve(async (req) => {
     const pageCount = result.pages?.length || 0;
     const rawTableCount = result.tables?.length || 0;
     
-    // Only keep first 100k chars of text to save memory (enough for unit detection + summary)
-    const fullText = result.content || "";
-    const pdfText = fullText.slice(0, 100_000);
+    // Truncate text immediately — don't hold full 410-page text in memory
+    const pdfText = (result.content || "").slice(0, 80_000);
+    result.content = null; // Free full text
+    
     const reportedUnit = detectReportedUnit(pdfText);
     
     console.log(`Azure complete: ${pageCount} pages, ${rawTableCount} tables`);
     console.log(`Detected unit: ${reportedUnit.unit}`);
 
-    // Extract tables — process one at a time and release Azure cells immediately
+    // Cap at 200 tables max — financial statements are always in first ~50
+    const maxTables = Math.min(rawTableCount, 200);
     const rawTables = result.tables || [];
-    // Free the large analyzeResult reference
-    resultData.analyzeResult = null;
+    // Free pages/paragraphs/styles we don't use
+    result.pages = null;
+    result.paragraphs = null;
+    result.styles = null;
+    result.keyValuePairs = null;
     
     const tables: any[] = [];
-    for (let index = 0; index < rawTables.length; index++) {
+    for (let index = 0; index < maxTables; index++) {
       const table = rawTables[index];
+      if (!table?.cells) { rawTables[index] = null; continue; }
+      
       const columns: string[] = [];
       const rows: string[][] = [];
       
+      // Build row map in single pass (avoids O(cells*rows) nested loop)
+      const rowMap = new Map<number, Map<number, string>>();
       for (const cell of table.cells) {
         const content = (cell.content ?? '').toString();
         if (cell.rowIndex === 0) {
           columns[cell.columnIndex] = content;
+        } else {
+          if (!rowMap.has(cell.rowIndex)) rowMap.set(cell.rowIndex, new Map());
+          rowMap.get(cell.rowIndex)!.set(cell.columnIndex, content);
         }
       }
       
+      // Convert map to arrays
       const maxRow = table.rowCount - 1;
       for (let rowIdx = 1; rowIdx <= maxRow; rowIdx++) {
         const rowData: string[] = [];
-        for (const cell of table.cells) {
-          if (cell.rowIndex === rowIdx) {
-            rowData[cell.columnIndex] = (cell.content ?? '').toString();
+        const rm = rowMap.get(rowIdx);
+        if (rm) {
+          for (const [colIdx, val] of rm) {
+            rowData[colIdx] = val;
           }
         }
         rows.push(rowData);
@@ -256,9 +270,12 @@ serve(async (req) => {
         columnCount: table.columnCount
       });
       
-      // Release reference to raw table cells
+      // Release raw table
       rawTables[index] = null;
     }
+    // Free remaining raw tables
+    result.tables = null;
+    resultData.analyzeResult = null;
 
     // Extract equity summary
     let equitySummary = null;
@@ -389,7 +406,7 @@ serve(async (req) => {
       tables: tables,
       equity_summary: equitySummary,
       financials: financialsWithUnit,
-      summary: aiSummary || `Extracted ${tables.length} tables from ${result.pages?.length || 0} pages`,
+      summary: aiSummary || `Extracted ${tables.length} tables from ${pageCount} pages`,
       processing_status: 'completed',
       azure_operation_url: null, // Clear sensitive URL
     }).eq('id', documentId);
