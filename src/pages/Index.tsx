@@ -132,6 +132,7 @@ const Index = () => {
       const { data, error } = await supabase
         .from('document_analyses')
         .select('*')
+        .eq('processing_status', 'completed')
         .order('created_at', { ascending: false })
         .limit(20);
 
@@ -142,26 +143,6 @@ const Index = () => {
     }
   };
 
-  const saveDocumentAnalysis = async (data: any, fileName: string) => {
-    if (!user) return;
-    
-    try {
-      const { error } = await supabase.from('document_analyses').insert({
-        file_name: fileName,
-        pdf_text: data.pdfText || null,
-        tables: data.tables || null,
-        equity_summary: data.equitySummary || null,
-        financials: { ...(data.financials || {}), reportedUnit: data.reportedUnit || null },
-        summary: data.summary || null,
-        user_id: user.id,
-      });
-
-      if (error) throw error;
-      await loadSavedDocuments();
-    } catch (error) {
-      console.error('Error saving document:', error);
-    }
-  };
 
   const handleDeleteDocument = async (id: string) => {
     try {
@@ -245,25 +226,68 @@ const Index = () => {
         try {
           const base64Data = reader.result as string;
           
-          const { data, error } = await supabase.functions.invoke("extract-pdf", {
+          // Step 1: Submit PDF to Azure (returns immediately with documentId)
+          const { data: submitData, error: submitError } = await supabase.functions.invoke("extract-pdf", {
             body: {
               fileName: selectedFile.name,
               fileData: base64Data,
             },
           });
 
-          if (error) throw error;
+          if (submitError) throw submitError;
+          if (!submitData?.documentId) throw new Error('No document ID returned');
 
-          // Derive a clean file name if the original is messy (UUID, etc.)
-          const cleanName = deriveCleanFileName(selectedFile.name, data.pdfText);
+          const documentId = submitData.documentId;
+          console.log(`PDF submitted, document ID: ${documentId}`);
+
+          toast({
+            title: "Processing",
+            description: "PDF submitted. Processing may take a minute for large filings...",
+          });
+
+          // Step 2: Poll for results
+          let attempts = 0;
+          const maxAttempts = 60; // 5 minutes (every 5 seconds)
+          
+          const pollForResults = async (): Promise<any> => {
+            while (attempts < maxAttempts) {
+              attempts++;
+              await new Promise(resolve => setTimeout(resolve, 5000)); // 5 seconds
+
+              const { data: pollData, error: pollError } = await supabase.functions.invoke("poll-pdf-result", {
+                body: { documentId },
+              });
+
+              if (pollError) throw pollError;
+
+              if (pollData?.status === 'completed') {
+                return pollData.data;
+              }
+
+              if (pollData?.status === 'failed') {
+                throw new Error(pollData.error || 'Processing failed');
+              }
+
+              // Still processing, continue polling
+              console.log(`Poll attempt ${attempts}: still processing...`);
+            }
+            throw new Error('Processing timed out after 5 minutes');
+          };
+
+          const resultData = await pollForResults();
+
+          // Derive a clean file name if the original is messy
+          const cleanName = deriveCleanFileName(selectedFile.name, resultData.pdfText);
+          resultData.fileName = cleanName;
+
+          // Update the document name in DB if it was cleaned
           if (cleanName !== selectedFile.name) {
-            data.fileName = cleanName;
+            await supabase.from('document_analyses').update({ file_name: cleanName }).eq('id', documentId);
           }
 
-          setResponse(data);
-          
-          // Auto-save the analysis with clean name
-          await saveDocumentAnalysis(data, cleanName);
+          setResponse(resultData);
+          setSelectedDocId(documentId);
+          await loadSavedDocuments();
           
           toast({
             title: "Success",
@@ -273,7 +297,7 @@ const Index = () => {
           console.error("Error:", error);
           toast({
             title: "Error",
-            description: "Failed to process PDF",
+            description: error instanceof Error ? error.message : "Failed to process PDF",
             variant: "destructive",
           });
         } finally {

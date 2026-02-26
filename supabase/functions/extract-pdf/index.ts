@@ -1,16 +1,16 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { z } from "https://deno.land/x/zod@v3.22.4/mod.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.81.1";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Input validation schema
 const requestSchema = z.object({
   fileName: z.string().min(1).max(255),
-  fileData: z.string().min(1).max(100_000_000), // ~75MB base64 limit
+  fileData: z.string().min(1).max(100_000_000),
 });
 
 serve(async (req) => {
@@ -20,13 +20,24 @@ serve(async (req) => {
 
   try {
     console.log('PDF extraction request received');
-    
-    // Parse and validate input
+
+    // Get auth user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) throw new Error('Missing authorization');
+
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+    const supabase = createClient(supabaseUrl, supabaseKey);
+
+    // Verify user from JWT
+    const token = authHeader.replace('Bearer ', '');
+    const { data: { user }, error: authError } = await supabase.auth.getUser(token);
+    if (authError || !user) throw new Error('Unauthorized');
+
+    // Parse input
     const rawBody = await req.json();
     const parseResult = requestSchema.safeParse(rawBody);
-    
     if (!parseResult.success) {
-      console.error('Input validation failed:', parseResult.error.errors);
       return new Response(JSON.stringify({ 
         success: false, 
         error: 'Invalid input: ' + parseResult.error.errors.map(e => e.message).join(', ')
@@ -35,577 +46,80 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-    
-    const { fileName, fileData } = parseResult.data;
-    
-    console.log(`Processing file: ${fileName}`);
-    console.log(`Raw fileData length: ${fileData?.length || 0} characters`);
-    console.log(`FileData starts with: ${fileData?.substring(0, 50)}`);
 
-    // Get Azure Document Intelligence credentials
+    const { fileName, fileData } = parseResult.data;
+    console.log(`Processing file: ${fileName}`);
+
+    // Get Azure credentials
     const docIntelEndpoint = Deno.env.get('AZURE_DOC_INTELLIGENCE_ENDPOINT');
     const docIntelKey = Deno.env.get('AZURE_DOC_INTELLIGENCE_KEY');
-    
     if (!docIntelEndpoint || !docIntelKey) {
       throw new Error('Azure Document Intelligence credentials not configured');
     }
 
-    // Extract base64 content
+    // Extract base64
     const pdfBase64 = fileData.split(',')[1] || fileData;
-    
-    console.log('Sending PDF to Azure Document Intelligence...');
-    console.log(`PDF base64 length: ${pdfBase64.length} characters`);
-    console.log(`Estimated PDF size: ~${Math.round(pdfBase64.length * 0.75 / 1024 / 1024 * 100) / 100} MB`);
-    console.log(`First 100 chars of base64: ${pdfBase64.substring(0, 100)}`);
-    console.log(`Last 100 chars of base64: ${pdfBase64.substring(pdfBase64.length - 100)}`);
+    console.log(`PDF base64 length: ${pdfBase64.length}, estimated size: ~${Math.round(pdfBase64.length * 0.75 / 1024 / 1024 * 100) / 100} MB`);
 
-    // Call Azure Document Intelligence API - Layout model for comprehensive table extraction
+    // Submit to Azure (non-blocking)
     const analyzeUrl = `${docIntelEndpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
-    
-    const requestBody = {
-      base64Source: pdfBase64,
-      // Enable all features for comprehensive extraction
-      features: ['keyValuePairs']
-      // Note: NOT specifying 'pages' parameter means Azure should process ALL pages
-    };
-    
-    console.log('Azure request config: processing ALL pages (no pages parameter)');
-    console.log(`Azure endpoint: ${analyzeUrl}`);
-    
     const analyzeResponse = await fetch(analyzeUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'Ocp-Apim-Subscription-Key': docIntelKey,
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify({ base64Source: pdfBase64 })
     });
 
     if (!analyzeResponse.ok) {
       const errorText = await analyzeResponse.text();
-      throw new Error(`Azure Document Intelligence error: ${analyzeResponse.status} - ${errorText}`);
+      throw new Error(`Azure error: ${analyzeResponse.status} - ${errorText}`);
     }
 
-    // Get the operation location to poll for results
     const operationLocation = analyzeResponse.headers.get('Operation-Location');
-    if (!operationLocation) {
-      throw new Error('No operation location returned from Azure');
-    }
+    if (!operationLocation) throw new Error('No operation location from Azure');
 
-    console.log('Analysis started, polling for results...');
+    console.log('Azure analysis started, operation:', operationLocation);
 
-    // Poll for results (Azure processes async)
-    let result = null;
-    let attempts = 0;
-    const maxAttempts = 120; // 120 seconds max for large filings
+    // Create DB record with pending status
+    const { data: docRecord, error: insertError } = await supabase
+      .from('document_analyses')
+      .insert({
+        file_name: fileName,
+        user_id: user.id,
+        processing_status: 'processing',
+        azure_operation_url: operationLocation,
+      })
+      .select('id')
+      .single();
 
-    while (attempts < maxAttempts) {
-      await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
-      
-      const resultResponse = await fetch(operationLocation, {
-        headers: {
-          'Ocp-Apim-Subscription-Key': docIntelKey,
-        }
-      });
+    if (insertError) throw new Error(`DB insert failed: ${insertError.message}`);
 
-      if (!resultResponse.ok) {
-        throw new Error(`Failed to get results: ${resultResponse.status}`);
-      }
+    console.log(`Created document record: ${docRecord.id}`);
 
-      const resultData = await resultResponse.json();
-      
-      if (resultData.status === 'succeeded') {
-        result = resultData.analyzeResult;
-        console.log('=== AZURE ANALYSIS COMPLETE ===');
-        console.log(`Pages analyzed: ${result.pages?.length || 0}`);
-        console.log(`Content length: ${result.content?.length || 0} characters`);
-        console.log(`Tables detected by Azure: ${result.tables?.length || 0}`);
-        
-        // Log full Azure response structure for debugging
-        console.log('\n=== FULL AZURE RESPONSE STRUCTURE ===');
-        console.log(JSON.stringify({
-          pagesCount: result.pages?.length || 0,
-          tablesCount: result.tables?.length || 0,
-          contentLength: result.content?.length || 0,
-          firstPageNumber: result.pages?.[0]?.pageNumber,
-          lastPageNumber: result.pages?.[result.pages?.length - 1]?.pageNumber,
-          tablesSummary: result.tables?.map((t: any, idx: number) => ({
-            tableIndex: idx + 1,
-            rowCount: t.rowCount,
-            columnCount: t.columnCount,
-            pages: t.boundingRegions?.map((br: any) => br.pageNumber).join(',') || 'unknown'
-          }))
-        }, null, 2));
-        
-        // Detailed table logging
-        if (result.tables && result.tables.length > 0) {
-          console.log('\n=== DETAILED TABLE INFORMATION ===');
-          result.tables.forEach((t: any, idx: number) => {
-            const pageSpan = t.boundingRegions?.map((br: any) => br.pageNumber).join(',') || 'unknown';
-            console.log(`Table ${idx + 1}: ${t.rowCount} rows × ${t.columnCount} cols, pages: [${pageSpan}]`);
-            console.log(`  Cell count: ${t.cells?.length || 0}`);
-            console.log(`  First few cells: ${JSON.stringify(t.cells?.slice(0, 3).map((c: any) => ({ row: c.rowIndex, col: c.columnIndex, content: c.content })))}`);
-          });
-        } else {
-          console.log('\n⚠️ WARNING: Azure detected 0 tables in result.tables array');
-        }
-        
-        console.log('\n=== END AZURE RESPONSE ===\n');
-        break;
-      } else if (resultData.status === 'failed') {
-        throw new Error('Azure analysis failed');
-      }
-      
-      attempts++;
-    }
-
-    if (!result) {
-      throw new Error('Analysis timed out');
-    }
-
-    // Extract text
-    const pdfText = result.content || "";
-
-    // ─── Unit Detection ─────────────────────────────────────────────
-    // Detect the reporting unit from common 10-K disclaimers like
-    // "in thousands", "in millions", "in billions", etc.
-    const detectReportedUnit = (text: string): { unit: string; multiplier: number } => {
-      // Search first 5000 chars and around financial statement headers
-      const searchText = text.toLowerCase();
-      
-      // Patterns: "in thousands", "(in millions)", "dollars in millions", 
-      // "amounts in thousands", "(In thousands, except per share data)"
-      const patterns = [
-        { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+billions\b/i, unit: 'billions', multiplier: 1_000_000_000 },
-        { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+millions\b/i, unit: 'millions', multiplier: 1_000_000 },
-        { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+thousands\b/i, unit: 'thousands', multiplier: 1_000 },
-        { regex: /\(\s*in\s+billions/i, unit: 'billions', multiplier: 1_000_000_000 },
-        { regex: /\(\s*in\s+millions/i, unit: 'millions', multiplier: 1_000_000 },
-        { regex: /\(\s*in\s+thousands/i, unit: 'thousands', multiplier: 1_000 },
-      ];
-
-      for (const { regex, unit, multiplier } of patterns) {
-        if (regex.test(searchText)) {
-          return { unit, multiplier };
-        }
-      }
-
-      // Default: assume raw units (no scaling)
-      return { unit: 'units', multiplier: 1 };
-    };
-
-    const reportedUnit = detectReportedUnit(pdfText);
-    console.log(`Detected reporting unit: ${reportedUnit.unit} (multiplier: ${reportedUnit.multiplier})`);
-    
-    // Count raw tables from Azure response
-    const azureTablesCount = result.tables?.length || 0;
-    console.log(`Azure returned ${azureTablesCount} tables for processing`);
-    console.log('Starting table extraction from result.tables array...');
-    
-    // Extract ALL tables from Azure result (tables are at top level, not nested under pages)
-    // The Azure Document Intelligence API returns all tables in result.tables regardless of page
-    const tables = (result.tables || []).map((table: any, index: number) => {
-      console.log(`Processing table ${index + 1}/${azureTablesCount}...`);
-      const columns: string[] = [];
-      const rows: string[][] = [];
-      
-      // Get column headers from first row
-      const headerCells = table.cells.filter((cell: any) => cell.rowIndex === 0);
-      headerCells.forEach((cell: any) => {
-        columns[cell.columnIndex] = cell.content;
-      });
-      
-      // Get data rows
-      const maxRow = Math.max(...table.cells.map((c: any) => c.rowIndex));
-      for (let rowIdx = 1; rowIdx <= maxRow; rowIdx++) {
-        const rowCells = table.cells.filter((cell: any) => cell.rowIndex === rowIdx);
-        const rowData: string[] = [];
-        rowCells.forEach((cell: any) => {
-          rowData[cell.columnIndex] = cell.content;
-        });
-        rows.push(rowData);
-      }
-      
-      return {
-        title: `Table ${index + 1}`,
-        columns: columns,
-        rows: rows,
-        rowCount: table.rowCount,
-        columnCount: table.columnCount
-      };
-    });
-
-    console.log(`Extracted ${pdfText.length} chars, ${tables.length} tables from ${result.pages?.length || 0} pages`);
-    
-    // Log table details for debugging
-    if (tables.length > 0) {
-      console.log('Table summary:');
-      tables.forEach((table: any, idx: number) => {
-        console.log(`  Table ${idx + 1}: ${table.rowCount} rows × ${table.columnCount} cols`);
-      });
-    }
-
-    // Helper to parse numeric value from string like "$5,603,520,725"
-    const parseNumberCell = (raw?: string): number | undefined => {
-      if (!raw) return undefined;
-      const cleaned = raw
-        .toString()
-        .replace(/\$/g, "")
-        .replace(/,/g, "")
-        .trim();
-      if (!cleaned) return undefined;
-      const n = Number(cleaned);
-      return Number.isFinite(n) ? n : undefined;
-    };
-
-    // Helper to parse income statement numbers (handles parentheses for negatives)
-    const parseIncomeStatementNumber = (raw?: string): number | undefined => {
-      if (!raw) return undefined;
-      const str = raw.toString().trim();
-      
-      // Check if wrapped in parentheses (means negative)
-      const isNegative = str.startsWith('(') && str.endsWith(')');
-      const cleaned = str
-        .replace(/[\$,()]/g, "")
-        .trim();
-      
-      if (!cleaned) return undefined;
-      const n = Number(cleaned);
-      if (!Number.isFinite(n)) return undefined;
-      
-      return isNegative ? -n : n;
-    };
-
-    // Semantic equity parser that works generically across 10-K PDFs
-    const extractEquitySummary = (tables: any[], flags?: { isWellKnownSeasonedIssuer?: boolean; isLargeAcceleratedFiler?: boolean }) => {
-      const summary: any = {
-        isWellKnownSeasonedIssuer: flags?.isWellKnownSeasonedIssuer,
-        isLargeAcceleratedFiler: flags?.isLargeAcceleratedFiler,
-        classA: {},
-        classB: {},
-      };
-
-      for (const table of tables) {
-        let section: "none" | "marketValue" | "sharesOutstanding" = "none";
-
-        for (const row of table.rows) {
-          const c0 = (row[0] || "").toLowerCase();
-          const c1 = row[1];
-          const c2 = row[2];
-
-          // Detect section headers using generic 10-K wording
-          if (c0.includes("aggregate market value")) {
-            section = "marketValue";
-            continue;
-          }
-          if (
-            c0.includes("number of") &&
-            c0.includes("shares") &&
-            c0.includes("outstanding")
-          ) {
-            section = "sharesOutstanding";
-            continue;
-          }
-
-          // MARKET VALUE SECTION
-          if (section === "marketValue") {
-            if (c0.startsWith("class a")) {
-              summary.classA.marketValue = parseNumberCell(c2 ?? c1);
-            } else if (c0.startsWith("class b")) {
-              summary.classB.marketValue = parseNumberCell(c2 ?? c1);
-            } else if (!c0 && (c2 || c1)) {
-              // blank label but numeric value → total market value
-              const total = parseNumberCell(c2 ?? c1);
-              if (total !== undefined) {
-                summary.marketValueNonAffiliatesTotal = total;
-              }
-            }
-          }
-
-          // SHARES OUTSTANDING SECTION
-          if (section === "sharesOutstanding") {
-            if (c0.startsWith("class a")) {
-              summary.classA.sharesOutstanding = parseNumberCell(c2 ?? c1);
-            } else if (c0.startsWith("class b")) {
-              summary.classB.sharesOutstanding = parseNumberCell(c2 ?? c1);
-            } else if (!c0 && (c2 || c1)) {
-              // blank label but numeric value → total shares
-              const total = parseNumberCell(c2 ?? c1);
-              if (total !== undefined) {
-                summary.sharesOutstandingTotal = total;
-              }
-            }
-          }
-        }
-      }
-
-      // Compute totals from components if missing
-      if (
-        summary.sharesOutstandingTotal === undefined &&
-        summary.classA.sharesOutstanding !== undefined &&
-        summary.classB.sharesOutstanding !== undefined
-      ) {
-        summary.sharesOutstandingTotal =
-          summary.classA.sharesOutstanding + summary.classB.sharesOutstanding;
-      }
-
-      if (
-        summary.marketValueNonAffiliatesTotal === undefined &&
-        summary.classA.marketValue !== undefined &&
-        summary.classB.marketValue !== undefined
-      ) {
-        summary.marketValueNonAffiliatesTotal =
-          summary.classA.marketValue + summary.classB.marketValue;
-      }
-
-      return summary;
-    };
-
-    // Extract income statement data
-    const extractIncomeStatement = (tables: any[]) => {
-      const incomeStatement: any = {};
-      
-      // Find the income statement table
-      let incomeStatementTable = null;
-      let latestYearColIndex = -1;
-      
-      for (const table of tables) {
-        let hasRevenue = false;
-        let hasNetIncome = false;
-        
-        // Check if this table looks like an income statement
-        for (const row of table.rows) {
-          const label = (row[0] || "").toLowerCase();
-          if (label.includes("revenue") || label.includes("total revenues")) {
-            hasRevenue = true;
-          }
-          if (label.includes("net income") || label.includes("net earnings")) {
-            hasNetIncome = true;
-          }
-        }
-        
-        if (hasRevenue && hasNetIncome) {
-          incomeStatementTable = table;
-          
-          // Find the rightmost numeric column (latest year)
-          // Check a revenue row to find which columns have numeric data
-          for (const row of table.rows) {
-            const label = (row[0] || "").toLowerCase();
-            if (label.includes("revenue") || label.includes("total revenues")) {
-              // Find rightmost column with a numeric value
-              for (let i = row.length - 1; i >= 1; i--) {
-                const val = parseIncomeStatementNumber(row[i]);
-                if (val !== undefined) {
-                  latestYearColIndex = i;
-                  break;
-                }
-              }
-              break;
-            }
-          }
-          break;
-        }
-      }
-      
-      if (!incomeStatementTable || latestYearColIndex === -1) {
-        return incomeStatement;
-      }
-      
-      // Extract line items
-      for (const row of incomeStatementTable.rows) {
-        const label = (row[0] || "").toLowerCase();
-        const value = parseIncomeStatementNumber(row[latestYearColIndex]);
-        
-        if (value === undefined) continue;
-        
-        // Revenue
-        if ((label.includes("revenue") || label.includes("total revenues")) && 
-            !label.includes("cost") && !label.includes("expense")) {
-          incomeStatement.revenue = value;
-        }
-        
-        // Cost of Sales
-        if (label.includes("cost of sales") || label.includes("cost of goods")) {
-          incomeStatement.costOfSales = value;
-        }
-        
-        // Gross Profit
-        if (label.includes("gross profit") || label.includes("gross margin")) {
-          incomeStatement.grossProfit = value;
-        }
-        
-        // Operating Income
-        if ((label.includes("operating income") || label.includes("income from operations")) &&
-            !label.includes("non-operating")) {
-          incomeStatement.operatingIncome = value;
-        }
-        
-        // Net Income (company-specific, not noncontrolling interests)
-        if ((label.includes("net income") || label.includes("net earnings")) &&
-            (label.includes("nike") || label.includes("attributable") || 
-             (!label.includes("noncontrolling") && !label.includes("non-controlling")))) {
-          if (!incomeStatement.netIncome) { // Take first match
-            incomeStatement.netIncome = value;
-          }
-        }
-        
-        // Basic EPS
-        if (label.includes("basic") && (label.includes("earnings per share") || label.includes("eps"))) {
-          incomeStatement.basicEPS = value;
-        }
-        
-        // Diluted EPS
-        if (label.includes("diluted") && (label.includes("earnings per share") || label.includes("eps"))) {
-          incomeStatement.dilutedEPS = value;
-        }
-      }
-      
-      return incomeStatement;
-    };
-
-    // Parse equity summary from tables
-    let equitySummary = null;
-    let financials = null;
-    if (tables.length > 0) {
-      try {
-        // First parse flags from checkbox section
-        let isWellKnownSeasonedIssuer = false;
-        let isLargeAcceleratedFiler = false;
-        
-        const parseBoolean = (cell: string): boolean => {
-          return cell.includes(':selected:');
-        };
-        
-        // Look for issuer flags in first table
-        if (tables[0].rows.length > 0) {
-          tables[0].rows.forEach((row: string[]) => {
-            const rowText = row.join(' ').toLowerCase();
-            if (rowText.includes('well-known seasoned issuer')) {
-              isWellKnownSeasonedIssuer = parseBoolean(row.join(' '));
-            }
-            if (rowText.includes('large accelerated filer')) {
-              isLargeAcceleratedFiler = parseBoolean(row.join(' '));
-            }
-          });
-        }
-        
-        equitySummary = extractEquitySummary(tables, {
-          isWellKnownSeasonedIssuer,
-          isLargeAcceleratedFiler
-        });
-        
-        console.log('Parsed equity summary:', equitySummary);
-      } catch (e) {
-        console.error('Error parsing equity summary:', e);
-      }
-
-      // Parse income statement
-      try {
-        const incomeStatement = extractIncomeStatement(tables);
-        if (Object.keys(incomeStatement).length > 0) {
-          financials = { incomeStatement };
-          console.log('Parsed income statement:', incomeStatement);
-        }
-      } catch (e) {
-        console.error('Error parsing income statement:', e);
-      }
-    }
-
-    // Call Lovable AI for summary
-    let summary = null;
-    try {
-      const lovableApiKey = Deno.env.get('LOVABLE_API_KEY');
-      
-      const aiResponse = await fetch(
-        'https://ai.gateway.lovable.dev/v1/chat/completions',
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "Authorization": `Bearer ${lovableApiKey}`,
-          },
-          body: JSON.stringify({
-            model: "google/gemini-2.5-flash",
-            messages: [
-              {
-                role: "system",
-                content: "You summarize financial documents. Provide a brief, clear summary highlighting key financial information."
-              },
-              {
-                role: "user",
-                content: `Summarize this financial document in 2-3 sentences:\n\n${pdfText.slice(0, 8000)}`
-              }
-            ]
-          }),
-        }
-      );
-
-      if (aiResponse.ok) {
-        const data = await aiResponse.json();
-        summary = data.choices?.[0]?.message?.content || null;
-      }
-    } catch (e) {
-      console.log('AI summary failed (non-critical):', e);
-    }
-
-    // Create response summary
-    const responseSummary = {
-      success: true,
-      message: "PDF processed successfully",
-      fileName: fileName,
-      timestamp: new Date().toISOString(),
-      pdfText: pdfText,
-      pdfTextPreview: pdfText.slice(0, 500) || null,
-      pdfTextLength: pdfText.length,
-      tables: tables,
-      tablesCount: tables.length,
-      azureTablesCount: azureTablesCount,
-      azureResponseSummary: {
-        pagesProcessed: result?.pages?.length || 0,
-        tablesDetected: azureTablesCount,
-        contentLength: pdfText.length,
-        tableDetails: tables.map((t: any, idx: number) => ({
-          tableIndex: idx + 1,
-          rows: t.rowCount,
-          columns: t.columnCount
-        }))
-      },
-      equitySummary: equitySummary,
-      financials: financials,
-      reportedUnit: reportedUnit,
-      azureMessage: summary || `Extracted ${tables.length} tables from ${result?.pages?.length || 0} pages`,
-      pdfError: null
-    };
-
-    console.log('\n=== FINAL RESPONSE SUMMARY ===');
-    console.log(JSON.stringify(responseSummary.azureResponseSummary, null, 2));
-
+    // Return immediately with the document ID
     return new Response(
-      JSON.stringify(responseSummary),
-      { 
-        headers: { 
-          ...corsHeaders,
-          'Content-Type': 'application/json' 
-        } 
-      }
+      JSON.stringify({
+        success: true,
+        documentId: docRecord.id,
+        status: 'processing',
+        message: 'PDF submitted for processing. Poll for results.',
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
 
   } catch (error) {
     console.error('Error:', error);
-    
     return new Response(
       JSON.stringify({ 
         success: false, 
         error: error instanceof Error ? error.message : 'Unknown error',
-        timestamp: new Date().toISOString(),
         pdfError: error instanceof Error ? error.message : 'Unknown error'
       }),
       { 
         status: 500,
-        headers: { 
-          ...corsHeaders,
-          'Content-Type': 'application/json' 
-        } 
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
       }
     );
   }
