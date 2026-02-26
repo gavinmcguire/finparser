@@ -66,14 +66,14 @@ export const BALANCE_SHEET_SCHEMA: CanonicalRow[] = [
 
   // Current Liabilities
   { canonicalLabel: 'Accounts Payable', keywords: ['accounts payable', 'trade payables'], section: 'Current Liabilities' },
-  { canonicalLabel: 'Short-Term Debt', keywords: ['short-term debt', 'short-term borrowings', 'current portion of long-term debt', 'notes payable, current', 'current maturities'], section: 'Current Liabilities' },
+  { canonicalLabel: 'Short-Term Debt', keywords: ['short-term debt', 'short-term borrowings', 'current portion of long-term debt', 'notes payable, current', 'current maturities', 'commercial paper'], section: 'Current Liabilities' },
   { canonicalLabel: 'Accrued Liabilities', keywords: ['accrued liabilities', 'accrued expenses', 'accrued and other'], section: 'Current Liabilities' },
   { canonicalLabel: 'Deferred Revenue (Current)', keywords: ['deferred revenue', 'unearned revenue', 'contract liabilities, current'], section: 'Current Liabilities' },
   { canonicalLabel: 'Other Current Liabilities', keywords: ['other current liabilities'], section: 'Current Liabilities' },
   { canonicalLabel: 'Total Current Liabilities', keywords: ['total current liabilities', 'current liabilities, total'], isSubtotal: true, isBold: true, section: 'Current Liabilities' },
 
   // Non-Current Liabilities
-  { canonicalLabel: 'Long-Term Debt', keywords: ['long-term debt', 'long term debt', 'notes payable', 'long-term borrowings'], section: 'Non-Current Liabilities' },
+  { canonicalLabel: 'Long-Term Debt', keywords: ['long-term debt', 'long term debt', 'notes payable', 'long-term borrowings', 'term debt'], section: 'Non-Current Liabilities' },
   { canonicalLabel: 'Deferred Tax Liabilities', keywords: ['deferred tax liabilities', 'deferred income tax', 'deferred taxes'], section: 'Non-Current Liabilities' },
   { canonicalLabel: 'Other Non-Current Liabilities', keywords: ['other non-current liabilities', 'other long-term liabilities', 'other liabilities'], section: 'Non-Current Liabilities' },
   { canonicalLabel: 'Total Liabilities', keywords: ['total liabilities'], isSubtotal: true, isBold: true, section: 'Total Liabilities' },
