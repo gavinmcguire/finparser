@@ -61,8 +61,9 @@ serve(async (req) => {
     const pdfBase64 = fileData.split(',')[1] || fileData;
     console.log(`PDF base64 length: ${pdfBase64.length}, estimated size: ~${Math.round(pdfBase64.length * 0.75 / 1024 / 1024 * 100) / 100} MB`);
 
-    // Submit to Azure (non-blocking)
-    const analyzeUrl = `${docIntelEndpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31`;
+    // Submit to Azure (non-blocking) — limit to first 150 pages to keep response size manageable
+    // Financial statements are always in the first ~100 pages of any 10-K filing
+    const analyzeUrl = `${docIntelEndpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31&pages=1-150`;
     const analyzeResponse = await fetch(analyzeUrl, {
       method: 'POST',
       headers: {
