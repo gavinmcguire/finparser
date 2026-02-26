@@ -83,8 +83,8 @@ function findRowValues(rows: string[][], keywords: string[]): number[] {
 function extractFromIncomeStatement(table: any): Partial<FinancialMetrics> {
   const rows = table.rows || [];
   
-  const revenue = findRowValue(rows, ['total revenue', 'net revenue', 'revenues', 'total net revenue']);
-  const revenueValues = findRowValues(rows, ['total revenue', 'net revenue', 'revenues', 'total net revenue']);
+  const revenue = findRowValue(rows, ['total revenue', 'net revenue', 'revenues', 'total net revenue', 'total net sales', 'net sales']);
+  const revenueValues = findRowValues(rows, ['total revenue', 'net revenue', 'revenues', 'total net revenue', 'total net sales', 'net sales']);
   
   let revenueYoY: number | null = null;
   if (revenueValues.length >= 2) {
@@ -168,13 +168,15 @@ function extractFromBalanceSheet(table: any): Partial<FinancialMetrics> {
   const shortTermDebt = findRowValue(rows, [
     'short-term debt',
     'current portion of long-term debt',
-    'notes payable'
+    'notes payable',
+    'commercial paper'
   ]) || 0;
   
   const longTermDebt = findRowValue(rows, [
     'long-term debt',
     'total debt',
-    'notes payable'
+    'notes payable',
+    'term debt'
   ]) || 0;
   
   const totalDebt = shortTermDebt + longTermDebt;
