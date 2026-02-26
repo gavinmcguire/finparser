@@ -14,56 +14,61 @@ const requestSchema = z.object({
 
 // ─── Unit Detection ─────────────────────────────────────────────
 function detectReportedUnit(text: string): { unit: string; multiplier: number } {
-  // Only search near financial statement headers, not the full document
-  // This prevents false positives from narrative text like "over $4 billion in..."
-  const statementHeaders = [
-    /consolidated\s+statements?\s+of\s+(?:operations|income|earnings)/i,
-    /consolidated\s+balance\s+sheets?/i,
-    /consolidated\s+statements?\s+of\s+cash\s+flows?/i,
-    /consolidated\s+statements?\s+of\s+(?:financial|comprehensive)/i,
+  // Strategy: search near financial statement headers AND look for the common
+  // "(in millions, except per share...)" disclaimer pattern anywhere in the doc
+  
+  const searchRegions: string[] = [];
+
+  // 1. Find ALL occurrences of financial statement headers (not just first)
+  const headerPatterns = [
+    /consolidated\s+statements?\s+of\s+(?:operations|income|earnings)/gi,
+    /consolidated\s+balance\s+sheets?/gi,
+    /consolidated\s+statements?\s+of\s+cash\s+flows?/gi,
+    /selected\s+(?:income|financial)\s+(?:statement|highlights?)\s+data/gi,
+    /three-year\s+summary/gi,
   ];
 
-  // Extract ~500 chars around each financial statement header
-  const searchRegions: string[] = [];
-  for (const header of statementHeaders) {
-    const match = header.exec(text);
-    if (match && match.index !== undefined) {
+  for (const pattern of headerPatterns) {
+    let match;
+    while ((match = pattern.exec(text)) !== null) {
       const start = Math.max(0, match.index - 200);
-      const end = Math.min(text.length, match.index + match[0].length + 300);
+      const end = Math.min(text.length, match.index + match[0].length + 500);
       searchRegions.push(text.slice(start, end));
     }
   }
 
-  // Also check the first 2000 chars (cover pages sometimes have disclaimers)
-  searchRegions.push(text.slice(0, 2000));
-
-  const searchText = searchRegions.join(' ');
-
-  // Order matters: check thousands first (most specific match wins by context)
-  const patterns = [
-    { regex: /\(\s*in\s+thousands/i, unit: 'thousands', multiplier: 1_000 },
-    { regex: /\(\s*in\s+millions/i, unit: 'millions', multiplier: 1_000_000 },
-    { regex: /\(\s*in\s+billions/i, unit: 'billions', multiplier: 1_000_000_000 },
-    { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+thousands\b/i, unit: 'thousands', multiplier: 1_000 },
-    { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+millions\b/i, unit: 'millions', multiplier: 1_000_000 },
-    { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+billions\b/i, unit: 'billions', multiplier: 1_000_000_000 },
-  ];
-
-  // Count matches — if "millions" appears more than "billions", use millions
-  const counts: Record<string, number> = { thousands: 0, millions: 0, billions: 0 };
-  for (const { regex, unit } of patterns) {
-    const matches = searchText.match(new RegExp(regex.source, 'gi'));
-    if (matches) counts[unit] += matches.length;
+  // 2. Look for the explicit disclaimer pattern anywhere — these are highly reliable
+  //    e.g. "(in millions, except per share data)" or "(Dollars in thousands)"
+  const disclaimerPattern = /\((?:in|dollars\s+in|amounts\s+in)\s+(?:thousands|millions|billions)[^)]{0,80}\)/gi;
+  let disclaimerMatch;
+  while ((disclaimerMatch = disclaimerPattern.exec(text)) !== null) {
+    searchRegions.push(disclaimerMatch[0]);
   }
 
-  // Pick the unit with the most matches near financial headers
-  if (counts.thousands > 0 && counts.thousands >= counts.millions && counts.thousands >= counts.billions) {
-    return { unit: 'thousands', multiplier: 1_000 };
+  // 3. Also check the first 3000 chars
+  searchRegions.push(text.slice(0, 3000));
+
+  if (searchRegions.length === 0) {
+    return { unit: 'units', multiplier: 1 };
   }
-  if (counts.millions > 0 && counts.millions >= counts.billions) {
+
+  const searchText = searchRegions.join(' ').toLowerCase();
+
+  // Count occurrences of each unit
+  const thousands = (searchText.match(/in\s+thousands/g) || []).length;
+  const millions = (searchText.match(/in\s+millions/g) || []).length;
+  const billions = (searchText.match(/in\s+billions/g) || []).length;
+
+  console.log(`Unit detection counts — thousands: ${thousands}, millions: ${millions}, billions: ${billions}`);
+
+  // Pick the most common unit near financial context
+  if (millions > 0 && millions >= thousands && millions >= billions) {
     return { unit: 'millions', multiplier: 1_000_000 };
   }
-  if (counts.billions > 0) {
+  if (thousands > 0 && thousands >= billions) {
+    return { unit: 'thousands', multiplier: 1_000 };
+  }
+  if (billions > 0) {
     return { unit: 'billions', multiplier: 1_000_000_000 };
   }
 
