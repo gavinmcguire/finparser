@@ -216,7 +216,8 @@ function extractCompanyAndPeriod(fileName: string, tables: any[]): { companyName
 
 export function extractFinancialMetrics(
   classifiedTables: ClassifiedTable[],
-  fileName: string
+  fileName: string,
+  unitMultiplier: number = 1
 ): FinancialMetrics {
   const { companyName, period } = extractCompanyAndPeriod(fileName, classifiedTables.map(t => t.table));
   
@@ -256,6 +257,29 @@ export function extractFinancialMetrics(
   // Extract from balance sheet
   if (balanceSheet) {
     Object.assign(metrics, extractFromBalanceSheet(balanceSheet.table));
+  }
+
+  // Apply unit multiplier to all absolute values (not ratios/percentages/EPS)
+  if (unitMultiplier !== 1) {
+    const scaleFields: (keyof FinancialMetrics)[] = [
+      'revenue', 'grossProfit', 'operatingIncome', 'netIncome',
+      'operatingCashFlow', 'capex', 'freeCashFlow',
+      'cashAndEquivalents', 'totalDebt', 'netCash',
+    ];
+    for (const field of scaleFields) {
+      const val = metrics[field];
+      if (typeof val === 'number') {
+        (metrics as any)[field] = val * unitMultiplier;
+      }
+    }
+  }
+  
+  // Recompute margins after scaling (they stay the same, but recalculate for safety)
+  if (metrics.revenue && metrics.revenue !== 0) {
+    if (metrics.grossProfit !== null) metrics.grossMargin = (metrics.grossProfit / metrics.revenue) * 100;
+    if (metrics.operatingIncome !== null) metrics.operatingMargin = (metrics.operatingIncome / metrics.revenue) * 100;
+    if (metrics.netIncome !== null) metrics.netMargin = (metrics.netIncome / metrics.revenue) * 100;
+    if (metrics.freeCashFlow !== null) metrics.fcfMargin = (metrics.freeCashFlow / metrics.revenue) * 100;
   }
   
   return metrics;

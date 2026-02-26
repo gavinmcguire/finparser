@@ -18,6 +18,7 @@ interface ExportOptions {
   companyName: string;
   fileName: string;
   classifiedTables: ClassifiedTable[];
+  unitMultiplier?: number;
   overrides?: {
     incomeStatement?: ClassifiedTable | null;
     balanceSheet?: ClassifiedTable | null;
@@ -360,7 +361,7 @@ function buildUnmappedSheet(
 
 // ─── Main export function ───────────────────────────────────────────
 
-export function generateExcelExport({ companyName, fileName, classifiedTables, overrides }: ExportOptions): boolean {
+export function generateExcelExport({ companyName, fileName, classifiedTables, overrides, unitMultiplier = 1 }: ExportOptions): boolean {
   const wb = XLSX.utils.book_new();
   let sheetsAdded = 0;
 
@@ -378,7 +379,7 @@ export function generateExcelExport({ companyName, fileName, classifiedTables, o
   for (const { type, table: classified } of statementEntries) {
     if (!classified) continue;
 
-    const normalized = normalizeTable(classified.table, type);
+    const normalized = normalizeTable(classified.table, type, unitMultiplier);
     if (normalized.rows.length === 0) continue;
 
     // Collect unmapped rows for separate sheet

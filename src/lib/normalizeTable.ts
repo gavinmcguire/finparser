@@ -133,7 +133,11 @@ function matchRow(rawLabel: string, schema: CanonicalRow[]): CanonicalRow | null
 /**
  * Normalize a classified table into the canonical schema.
  */
-export function normalizeTable(table: any, type: StatementType): NormalizedStatement {
+/**
+ * Normalize a classified table into the canonical schema.
+ * @param unitMultiplier - If provided, scale all numeric values (e.g. 1000 for "in thousands")
+ */
+export function normalizeTable(table: any, type: StatementType, unitMultiplier: number = 1): NormalizedStatement {
   const schema = getSchemaForType(type);
   const { columns, rows } = getRawData(table);
   const { periods, periodIndices } = detectPeriods(columns);
@@ -156,8 +160,16 @@ export function normalizeTable(table: any, type: StatementType): NormalizedState
     const match = matchRow(rawLabel, schema);
 
     if (match) {
-      // Extract values at period column indices
-      const values = periodIndices.map(idx => parseNumericValue(row[idx]));
+      // Extract values at period column indices, applying unit multiplier
+      const values = periodIndices.map(idx => {
+        const v = parseNumericValue(row[idx]);
+        // Don't scale EPS or share count rows
+        if (v !== null && unitMultiplier !== 1) {
+          const isPerShare = match.section === 'Per Share Data';
+          return isPerShare ? v : v * unitMultiplier;
+        }
+        return v;
+      });
 
       // If we already have this canonical row, prefer the one with more non-null values
       const existing = matchedRows.get(match.canonicalLabel);

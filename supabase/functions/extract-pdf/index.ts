@@ -165,6 +165,37 @@ serve(async (req) => {
 
     // Extract text
     const pdfText = result.content || "";
+
+    // ─── Unit Detection ─────────────────────────────────────────────
+    // Detect the reporting unit from common 10-K disclaimers like
+    // "in thousands", "in millions", "in billions", etc.
+    const detectReportedUnit = (text: string): { unit: string; multiplier: number } => {
+      // Search first 5000 chars and around financial statement headers
+      const searchText = text.toLowerCase();
+      
+      // Patterns: "in thousands", "(in millions)", "dollars in millions", 
+      // "amounts in thousands", "(In thousands, except per share data)"
+      const patterns = [
+        { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+billions\b/i, unit: 'billions', multiplier: 1_000_000_000 },
+        { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+millions\b/i, unit: 'millions', multiplier: 1_000_000 },
+        { regex: /\b(?:in|amounts?\s+in|dollars?\s+in)\s+thousands\b/i, unit: 'thousands', multiplier: 1_000 },
+        { regex: /\(\s*in\s+billions/i, unit: 'billions', multiplier: 1_000_000_000 },
+        { regex: /\(\s*in\s+millions/i, unit: 'millions', multiplier: 1_000_000 },
+        { regex: /\(\s*in\s+thousands/i, unit: 'thousands', multiplier: 1_000 },
+      ];
+
+      for (const { regex, unit, multiplier } of patterns) {
+        if (regex.test(searchText)) {
+          return { unit, multiplier };
+        }
+      }
+
+      // Default: assume raw units (no scaling)
+      return { unit: 'units', multiplier: 1 };
+    };
+
+    const reportedUnit = detectReportedUnit(pdfText);
+    console.log(`Detected reporting unit: ${reportedUnit.unit} (multiplier: ${reportedUnit.multiplier})`);
     
     // Count raw tables from Azure response
     const azureTablesCount = result.tables?.length || 0;
@@ -541,6 +572,7 @@ serve(async (req) => {
       },
       equitySummary: equitySummary,
       financials: financials,
+      reportedUnit: reportedUnit,
       azureMessage: summary || `Extracted ${tables.length} tables from ${result?.pages?.length || 0} pages`,
       pdfError: null
     };
