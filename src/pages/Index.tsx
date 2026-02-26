@@ -29,6 +29,63 @@ interface DocumentAnalysis {
   created_at: string;
 }
 
+/**
+ * Detect if a filename is messy (UUID, random hex, no meaningful words)
+ * and derive a clean name from the PDF text if so.
+ */
+function deriveCleanFileName(originalName: string, pdfText?: string | null): string {
+  const nameWithoutExt = originalName.replace(/\.pdf_?\.pdf$/i, '.pdf').replace(/\.pdf$/i, '');
+  
+  // Check if the name looks like a UUID, hex string, or has no meaningful words
+  const isMessy = /^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$/i.test(nameWithoutExt) ||
+                  /^[0-9a-f]{16,}$/i.test(nameWithoutExt) ||
+                  /^[0-9a-f_-]{20,}$/i.test(nameWithoutExt) ||
+                  nameWithoutExt.length < 3;
+
+  if (!isMessy) return originalName;
+  if (!pdfText || pdfText.length < 100) return originalName;
+
+  const text = pdfText.slice(0, 3000);
+
+  // Try to find company name from common 10-K patterns
+  let company = '';
+  let filingType = '10-K';
+  
+  // Pattern: "APPLE INC." or "NIKE, INC." near top of document
+  const companyMatch = text.match(/^\s*([A-Z][A-Z\s,.'&]+(?:INC\.?|CORP\.?|CO\.?|LTD\.?|LLC|LP|GROUP|HOLDINGS))/mi);
+  if (companyMatch) {
+    company = companyMatch[1].trim()
+      .replace(/,?\s*(INC\.?|CORP\.?|CO\.?)$/i, '')
+      .trim();
+    // Title case
+    company = company.split(/\s+/)
+      .map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase())
+      .join(' ');
+  }
+
+  // Try ticker from "Common Stock, ... AAPL"
+  if (!company) {
+    const tickerMatch = text.match(/Common Stock[^)]*?\b([A-Z]{1,5})\b[^)]*?(?:Nasdaq|NYSE|Stock Market)/i);
+    if (tickerMatch) company = tickerMatch[1];
+  }
+
+  // Detect filing type
+  if (/\b10-?Q\b/i.test(text)) filingType = '10-Q';
+  if (/\b8-?K\b/i.test(text)) filingType = '8-K';
+  if (/\bannual\s+report\b/i.test(text)) filingType = '10-K';
+
+  // Find fiscal year
+  const yearMatch = text.match(/(?:fiscal\s+year|year\s+ended|for\s+the\s+year)[^0-9]*?(20\d{2})/i);
+  const year = yearMatch ? yearMatch[1] : '';
+
+  if (company) {
+    const parts = [company, filingType, year].filter(Boolean);
+    return parts.join(' ') + '.pdf';
+  }
+
+  return originalName;
+}
+
 const Index = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -197,10 +254,16 @@ const Index = () => {
 
           if (error) throw error;
 
+          // Derive a clean file name if the original is messy (UUID, etc.)
+          const cleanName = deriveCleanFileName(selectedFile.name, data.pdfText);
+          if (cleanName !== selectedFile.name) {
+            data.fileName = cleanName;
+          }
+
           setResponse(data);
           
-          // Auto-save the analysis
-          await saveDocumentAnalysis(data, selectedFile.name);
+          // Auto-save the analysis with clean name
+          await saveDocumentAnalysis(data, cleanName);
           
           toast({
             title: "Success",
