@@ -208,40 +208,57 @@ serve(async (req) => {
 
     // ─── Process completed results ─────────────────────────────
     const result = resultData.analyzeResult;
-    const pdfText = result.content || "";
+    const pageCount = result.pages?.length || 0;
+    const rawTableCount = result.tables?.length || 0;
+    
+    // Only keep first 100k chars of text to save memory (enough for unit detection + summary)
+    const fullText = result.content || "";
+    const pdfText = fullText.slice(0, 100_000);
     const reportedUnit = detectReportedUnit(pdfText);
     
-    console.log(`Azure complete: ${result.pages?.length || 0} pages, ${result.tables?.length || 0} tables`);
+    console.log(`Azure complete: ${pageCount} pages, ${rawTableCount} tables`);
     console.log(`Detected unit: ${reportedUnit.unit}`);
 
-    // Extract tables
-    const tables = (result.tables || []).map((table: any, index: number) => {
+    // Extract tables — process one at a time and release Azure cells immediately
+    const rawTables = result.tables || [];
+    // Free the large analyzeResult reference
+    resultData.analyzeResult = null;
+    
+    const tables: any[] = [];
+    for (let index = 0; index < rawTables.length; index++) {
+      const table = rawTables[index];
       const columns: string[] = [];
       const rows: string[][] = [];
       
-      const headerCells = table.cells.filter((cell: any) => cell.rowIndex === 0);
-      headerCells.forEach((cell: any) => {
-        columns[cell.columnIndex] = (cell.content ?? '').toString();
-      });
+      for (const cell of table.cells) {
+        const content = (cell.content ?? '').toString();
+        if (cell.rowIndex === 0) {
+          columns[cell.columnIndex] = content;
+        }
+      }
       
-      const maxRow = Math.max(...table.cells.map((c: any) => c.rowIndex));
+      const maxRow = table.rowCount - 1;
       for (let rowIdx = 1; rowIdx <= maxRow; rowIdx++) {
-        const rowCells = table.cells.filter((cell: any) => cell.rowIndex === rowIdx);
         const rowData: string[] = [];
-        rowCells.forEach((cell: any) => {
-          rowData[cell.columnIndex] = (cell.content ?? '').toString();
-        });
+        for (const cell of table.cells) {
+          if (cell.rowIndex === rowIdx) {
+            rowData[cell.columnIndex] = (cell.content ?? '').toString();
+          }
+        }
         rows.push(rowData);
       }
       
-      return {
+      tables.push({
         title: `Table ${index + 1}`,
         columns,
         rows,
         rowCount: table.rowCount,
         columnCount: table.columnCount
-      };
-    });
+      });
+      
+      // Release reference to raw table cells
+      rawTables[index] = null;
+    }
 
     // Extract equity summary
     let equitySummary = null;
@@ -389,13 +406,14 @@ serve(async (req) => {
       status: 'completed',
       data: {
         fileName: doc.file_name,
-        pdfText,
+        pdfText: pdfText.slice(0, 50_000), // Only send first 50k to client
+        pdfTextPreview: pdfText.slice(0, 500),
         tables,
         tablesCount: tables.length,
         equitySummary,
         financials: financialsWithUnit,
         reportedUnit,
-        summary: aiSummary || `Extracted ${tables.length} tables from ${result.pages?.length || 0} pages`,
+        summary: aiSummary || `Extracted ${tables.length} tables from ${pageCount} pages`,
       }
     }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
