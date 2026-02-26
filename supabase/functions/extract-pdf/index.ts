@@ -97,7 +97,7 @@ serve(async (req) => {
     // Poll for results (Azure processes async)
     let result = null;
     let attempts = 0;
-    const maxAttempts = 30; // 30 seconds max
+    const maxAttempts = 120; // 120 seconds max for large filings
 
     while (attempts < maxAttempts) {
       await new Promise(resolve => setTimeout(resolve, 1000)); // Wait 1 second
