@@ -61,9 +61,16 @@ serve(async (req) => {
     const pdfBase64 = fileData.split(',')[1] || fileData;
     console.log(`PDF base64 length: ${pdfBase64.length}, estimated size: ~${Math.round(pdfBase64.length * 0.75 / 1024 / 1024 * 100) / 100} MB`);
 
-    // Submit to Azure (non-blocking) — limit to first 150 pages to keep response size manageable
-    // Financial statements are always in the first ~100 pages of any 10-K filing
-    const analyzeUrl = `${docIntelEndpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31&pages=1-150`;
+    // Submit to Azure (non-blocking)
+    // For massive filings (600+ pages), limit to first 250 pages to prevent OOM in poll-pdf-result
+    // Financial statements are always in Part II (first ~100-150 pages) of any 10-K
+    const pdfBytes = Uint8Array.from(atob(pdfBase64), c => c.charCodeAt(0));
+    // Rough page estimate: average SEC filing page ≈ 5-8KB of PDF data
+    const estimatedPages = Math.round(pdfBytes.length / 6000);
+    const pageLimit = estimatedPages > 300 ? '&pages=1-250' : '';
+    console.log(`Estimated pages: ${estimatedPages}${pageLimit ? ', capping at 250' : ', processing all'}`);
+    
+    const analyzeUrl = `${docIntelEndpoint}/formrecognizer/documentModels/prebuilt-layout:analyze?api-version=2023-07-31${pageLimit}`;
     const analyzeResponse = await fetch(analyzeUrl, {
       method: 'POST',
       headers: {
