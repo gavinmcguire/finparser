@@ -83,8 +83,19 @@ function findRowValues(rows: string[][], keywords: string[]): number[] {
 function extractFromIncomeStatement(table: any): Partial<FinancialMetrics> {
   const rows = table.rows || [];
   
-  const revenue = findRowValue(rows, ['total revenue', 'net revenue', 'revenues', 'total net revenue', 'total net sales', 'net sales']);
-  const revenueValues = findRowValues(rows, ['total revenue', 'net revenue', 'revenues', 'total net revenue', 'total net sales', 'net sales']);
+  // Try banking-specific "total net revenue" first, then standard keywords
+  let revenue = findRowValue(rows, ['total net revenue']);
+  const revenueKeywords = revenue !== null 
+    ? ['total net revenue'] 
+    : ['total revenue', 'net revenue', 'revenues', 'total net sales', 'net sales'];
+  
+  if (revenue === null) {
+    revenue = findRowValue(rows, revenueKeywords);
+  }
+  
+  const revenueValues = findRowValues(rows, revenue !== null && findRowValue(rows, ['total net revenue']) !== null
+    ? ['total net revenue']
+    : ['total revenue', 'net revenue', 'revenues', 'total net revenue', 'total net sales', 'net sales']);
   
   let revenueYoY: number | null = null;
   if (revenueValues.length >= 2) {
@@ -96,7 +107,7 @@ function extractFromIncomeStatement(table: any): Partial<FinancialMetrics> {
   }
   
   const grossProfit = findRowValue(rows, ['gross profit', 'gross margin']);
-  const operatingIncome = findRowValue(rows, ['operating income', 'income from operations', 'operating profit']);
+  const operatingIncome = findRowValue(rows, ['operating income', 'income from operations', 'operating profit', 'income before income tax']);
   const netIncome = findRowValue(rows, ['net income', 'net earnings', 'net profit']);
   
   let grossMargin: number | null = null;

@@ -12,7 +12,10 @@ const INCOME_STATEMENT_KEYWORDS = [
   'earnings per share', 'cost of sales', 'cost of goods', 'operating expenses',
   'income from operations', 'net earnings', 'diluted eps', 'basic eps',
   'selling, general', 'interest expense', 'income tax', 'ebit', 'ebitda',
-  'total revenues', 'gross margin', 'operating margin'
+  'total revenues', 'gross margin', 'operating margin',
+  // Banking-specific
+  'net interest income', 'noninterest revenue', 'noninterest expense',
+  'total net revenue', 'provision for credit losses', 'compensation expense',
 ];
 
 const BALANCE_SHEET_KEYWORDS = [
@@ -114,7 +117,7 @@ export function classifyAllTables(tables: any[]): ClassifiedTable[] {
 
 // ─── Gate B: Statement-type signatures (must have ≥1) ───────────
 const SIGNATURE_ANCHORS: Record<FinancialStatementType, string[]> = {
-  income_statement: ['net income', 'net earnings', 'income from operations', 'operating income', 'operating profit'],
+  income_statement: ['net income', 'net earnings', 'income from operations', 'operating income', 'operating profit', 'total net revenue', 'income before income tax'],
   balance_sheet: ['total assets', 'total liabilities', 'stockholders equity', 'shareholders equity', 'total equity'],
   cash_flow: ['net cash provided by operating', 'net cash from operating', 'cash flows from operating', 'net cash used in operating'],
   other: [],
@@ -122,7 +125,7 @@ const SIGNATURE_ANCHORS: Record<FinancialStatementType, string[]> = {
 
 // ─── Scoring anchors (broader set for coverage scoring) ─────────
 const SCORING_ANCHORS: Record<FinancialStatementType, string[]> = {
-  income_statement: ['revenue', 'net income', 'operating income', 'gross profit', 'cost of', 'earnings per share', 'income tax'],
+  income_statement: ['revenue', 'net income', 'operating income', 'gross profit', 'cost of', 'earnings per share', 'income tax', 'total net revenue', 'net interest income', 'provision for credit losses', 'noninterest revenue'],
   balance_sheet: ['total assets', 'total liabilities', 'stockholders equity', 'shareholders equity', 'cash and cash equivalents', 'current assets', 'retained earnings', 'total equity'],
   cash_flow: ['net cash provided by operating', 'net cash from operating', 'capital expenditure', 'purchase of property', 'financing activities', 'investing activities', 'depreciation'],
   other: [],
@@ -297,7 +300,7 @@ function hasExpectedOrdering(table: any, type: FinancialStatementType): boolean 
   };
 
   if (type === 'income_statement') {
-    const revPos = findPosition(['revenue', 'net revenue', 'total revenue']);
+    const revPos = findPosition(['revenue', 'net revenue', 'total revenue', 'total net revenue', 'net interest income']);
     const niPos = findPosition(['net income', 'net earnings']);
     return revPos >= 0 && niPos >= 0 && revPos < niPos;
   }
