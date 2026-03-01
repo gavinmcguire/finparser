@@ -10,7 +10,7 @@ import { KeyRatiosCard } from "@/components/KeyRatiosCard";
 import { CompanyComparison } from "@/components/CompanyComparison";
 import { InterviewPrepMode } from "@/components/InterviewPrepMode";
 import { Button } from "@/components/ui/button";
-import { Loader2, LogOut, Shield, Sparkles, FileText, ChevronRight, GitCompare, FileSpreadsheet } from "lucide-react";
+import { Loader2, LogOut, Shield, Sparkles, FileText, ChevronRight, GitCompare, FileSpreadsheet, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { supabase } from "@/integrations/supabase/client";
 import { classifyAllTables, ClassifiedTable, FinancialStatementType } from "@/lib/classifyTables";
@@ -188,6 +188,71 @@ const Index = () => {
       reportedUnit: doc.financials?.reportedUnit || null,
       summary: doc.summary,
     });
+  };
+
+  // Dev-only: re-run server-side extraction without re-uploading to Azure
+  const handleReprocess = async () => {
+    if (!selectedDocId) return;
+    
+    setIsProcessing(true);
+    try {
+      // Reset the doc to 'processing' so poll-pdf-result re-extracts from Azure's cached result
+      const { error: resetError } = await supabase
+        .from('document_analyses')
+        .update({
+          processing_status: 'processing',
+          tables: null,
+          financials: null,
+          equity_summary: null,
+          summary: null,
+          pdf_text: null,
+          error_message: null,
+        })
+        .eq('id', selectedDocId);
+
+      if (resetError) throw resetError;
+
+      toast({
+        title: "Re-processing",
+        description: "Re-running extraction on cached Azure result...",
+      });
+
+      // Poll for results (same logic as fresh upload)
+      let attempts = 0;
+      const maxAttempts = 30;
+      
+      while (attempts < maxAttempts) {
+        attempts++;
+        await new Promise(resolve => setTimeout(resolve, 5000));
+
+        const { data: pollData, error: pollError } = await supabase.functions.invoke("poll-pdf-result", {
+          body: { documentId: selectedDocId },
+        });
+
+        if (pollError) throw pollError;
+
+        if (pollData?.status === 'completed') {
+          setResponse(pollData.data);
+          await loadSavedDocuments();
+          toast({ title: "Re-processed!", description: "Extraction logic re-applied successfully." });
+          return;
+        }
+
+        if (pollData?.status === 'failed') {
+          throw new Error(pollData.error || 'Re-processing failed. Azure result may have expired (24h). Try a fresh upload.');
+        }
+      }
+      throw new Error('Re-processing timed out');
+    } catch (error) {
+      console.error("Re-process error:", error);
+      toast({
+        title: "Re-process failed",
+        description: error instanceof Error ? error.message : "Failed to re-process",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleFileSelect = (file: File) => {
@@ -443,6 +508,24 @@ const Index = () => {
               onDelete={handleDeleteDocument}
               selectedId={selectedDocId}
             />
+
+            {/* Dev-only: Re-process button */}
+            {isAdmin && selectedDocId && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={handleReprocess}
+                disabled={isProcessing}
+                className="w-full border-dashed border-muted-foreground/30 text-muted-foreground hover:text-primary hover:border-primary/50 text-xs"
+              >
+                {isProcessing ? (
+                  <Loader2 className="h-3 w-3 mr-2 animate-spin" />
+                ) : (
+                  <RotateCcw className="h-3 w-3 mr-2" />
+                )}
+                Re-process (dev)
+              </Button>
+            )}
           </div>
 
           {/* Main Content Area */}
