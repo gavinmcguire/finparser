@@ -37,17 +37,33 @@ export default function Admin() {
   const { toast } = useToast();
   const { isAdmin, isLoading: authLoading, user } = useAuth();
 
-  useEffect(() => {
-    if (!authLoading && !isAdmin) {
-      navigate('/');
-    }
-  }, [isAdmin, authLoading, navigate]);
+  // Server-side admin verification to prevent client-state manipulation
+  const [serverVerifiedAdmin, setServerVerifiedAdmin] = useState<boolean | null>(null);
 
   useEffect(() => {
-    if (isAdmin) {
+    if (!authLoading && !user) {
+      navigate('/');
+      return;
+    }
+    if (!authLoading && user) {
+      // Verify admin role server-side via RPC (bypasses any client-state tampering)
+      supabase.rpc('has_role', { _user_id: user.id, _role: 'admin' })
+        .then(({ data, error }) => {
+          if (error || !data) {
+            setServerVerifiedAdmin(false);
+            navigate('/');
+          } else {
+            setServerVerifiedAdmin(true);
+          }
+        });
+    }
+  }, [authLoading, user, navigate]);
+
+  useEffect(() => {
+    if (serverVerifiedAdmin) {
       fetchUsers();
     }
-  }, [isAdmin]);
+  }, [serverVerifiedAdmin]);
 
   const fetchUsers = async () => {
     try {
@@ -119,7 +135,7 @@ export default function Admin() {
     }
   };
 
-  if (authLoading || isLoading) {
+  if (authLoading || isLoading || serverVerifiedAdmin === null) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
@@ -132,7 +148,7 @@ export default function Admin() {
     );
   }
 
-  if (!isAdmin) return null;
+  if (!serverVerifiedAdmin) return null;
 
   const activeUsers = users.filter(u => u.status === 'approved');
   const kickedUsers = users.filter(u => u.status === 'rejected');
