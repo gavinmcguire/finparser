@@ -50,6 +50,33 @@ serve(async (req) => {
     const { fileName, fileData } = parseResult.data;
     console.log(`Processing file: ${fileName}`);
 
+    // ─── Deduplication: reuse existing Azure job if same file is already processing or completed ───
+    const { data: existingDocs } = await supabase
+      .from('document_analyses')
+      .select('id, processing_status')
+      .eq('user_id', user.id)
+      .eq('file_name', fileName)
+      .in('processing_status', ['processing', 'completed'])
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (existingDocs && existingDocs.length > 0) {
+      const existing = existingDocs[0];
+      console.log(`Reusing existing document ${existing.id} (status: ${existing.processing_status})`);
+      return new Response(
+        JSON.stringify({
+          success: true,
+          documentId: existing.id,
+          status: existing.processing_status,
+          message: existing.processing_status === 'completed' 
+            ? 'Document already processed.' 
+            : 'Document is already being processed. Poll for results.',
+          reused: true,
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Get Azure credentials
     const docIntelEndpoint = Deno.env.get('AZURE_DOC_INTELLIGENCE_ENDPOINT');
     const docIntelKey = Deno.env.get('AZURE_DOC_INTELLIGENCE_KEY');
