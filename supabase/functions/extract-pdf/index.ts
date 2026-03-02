@@ -50,22 +50,19 @@ serve(async (req) => {
     const { fileName, fileData } = parseResult.data;
     console.log(`Processing file: ${fileName}`);
 
-    // ─── Upload quota: 3/day for non-admins ───
+    // ─── Upload quota: 10 lifetime docs for non-admins ───
     const { data: isAdmin } = await supabase.rpc('has_role', { _user_id: user.id, _role: 'admin' });
 
     if (!isAdmin) {
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
       const { count, error: countError } = await supabase
         .from('document_analyses')
         .select('id', { count: 'exact', head: true })
-        .eq('user_id', user.id)
-        .gte('created_at', today.toISOString());
+        .eq('user_id', user.id);
 
-      if (!countError && (count ?? 0) >= 3) {
+      if (!countError && (count ?? 0) >= 10) {
         return new Response(JSON.stringify({
           success: false,
-          error: 'Daily upload limit reached (3 per day). Try again tomorrow.',
+          error: 'Free upload limit reached (10 documents). Upgrade to Pro for unlimited uploads.',
         }), {
           status: 429,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
